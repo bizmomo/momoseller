@@ -16,7 +16,7 @@ body{
   background: var(--bg);
   color: var(--ink);
   font-family: 'Noto Sans KR', system-ui, sans-serif;
-  padding: 28px 14px 100px;
+  padding: 28px 14px 116px;
 }
 .wrap{ max-width: 640px; margin: 0 auto; }
 .masthead{ margin-bottom: 20px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
@@ -140,11 +140,11 @@ button.secondary:hover{ border-color: var(--accent); color: var(--accent-deep); 
 }
 .bottom-nav-inner{
   max-width: 640px; margin: 0 auto; display:flex;
-  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  padding: 9px 4px calc(14px + env(safe-area-inset-bottom));
 }
 .nav-item{
-  flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
   padding:6px 2px; text-decoration:none; color:var(--ink-soft); font-size:11px;
 }
-.nav-icon{ font-size:19px; line-height:1; }
+.nav-icon{ font-size:21px; line-height:1; }
 .nav-item.active{ color:var(--ink); font-weight:700; }
