@@ -57,31 +57,48 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+const FREE_LIMIT = 3;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
   }
 
   try {
-    const supabase = createClient(
+    // Scoped to the caller's own JWT - used only to verify who's calling.
+    const authClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: req.headers.get("Authorization")! } } },
     );
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await authClient.auth.getUser();
     if (userError || !user) {
       return jsonResponse({ error: "로그인이 필요해요." }, 401);
     }
 
-    const { data: profile } = await supabase
+    // Service-role client: bypasses RLS. Only ever used here, server-side -
+    // never sent to the browser - so the free-generation counter can't be
+    // reset by calling the table directly from client code.
+    const adminClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const { data: profile } = await adminClient
       .from("profiles")
-      .select("is_pro")
+      .select("is_pro, ai_generations_used")
       .eq("id", user.id)
       .single();
 
-    if (!profile?.is_pro) {
-      return jsonResponse({ error: "유료 계정만 사용할 수 있는 기능이에요." }, 403);
+    const isPro = profile?.is_pro ?? false;
+    const usedCount = profile?.ai_generations_used ?? 0;
+
+    if (!isPro && usedCount >= FREE_LIMIT) {
+      return jsonResponse({
+        error: `무료 생성 ${FREE_LIMIT}개를 모두 사용하셨어요. 계속 쓰시려면 Pro 계정 전환이 필요해요.`,
+        limitReached: true,
+      }, 403);
     }
 
     const { input, category, tone, brand } = await req.json();
@@ -102,7 +119,17 @@ Deno.serve(async (req) => {
       (block): block is Anthropic.TextBlock => block.type === "text",
     );
 
-    return jsonResponse({ result: textBlock?.text ?? "" });
+    let remaining: number | null = null;
+    if (!isPro) {
+      const newCount = usedCount + 1;
+      await adminClient
+        .from("profiles")
+        .update({ ai_generations_used: newCount })
+        .eq("id", user.id);
+      remaining = Math.max(0, FREE_LIMIT - newCount);
+    }
+
+    return jsonResponse({ result: textBlock?.text ?? "", remaining });
   } catch (err) {
     console.error(err);
     return jsonResponse({ error: "AI 생성 중 오류가 발생했어요. 잠시 후 다시 시도해주세요." }, 500);
