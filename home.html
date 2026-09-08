@@ -22,17 +22,26 @@
   </div>
 
   <div class="card" id="dashCard">
-    <h2>오늘 대시보드 <span id="dashDate" style="font-size:12px; color:var(--ink-soft); font-weight:400;"></span></h2>
-    <div id="dashLoading" class="empty-note">불러오는 중...</div>
-    <div id="dashError" class="status err" style="display:none;"></div>
-    <div id="dashStats" style="display:none;">
-      <div class="stat-grid">
-        <div class="stat-box"><div class="stat-label">총매출</div><div class="stat-value" id="statRevenue">-</div></div>
-        <div class="stat-box"><div class="stat-label">주문건수</div><div class="stat-value" id="statOrders">-</div></div>
-        <div class="stat-box"><div class="stat-label">신규주문</div><div class="stat-value" id="statNew">-</div></div>
-        <div class="stat-box"><div class="stat-label">발송대기</div><div class="stat-value" id="statAwaiting">-</div></div>
+    <div id="dashComingSoon">
+      <span class="soon-badge">연동 준비 중</span>
+      <h2>오늘 대시보드</h2>
+      <p class="hint" style="margin-top:0;">
+        쿠팡 실시간 연동 작업 중이에요 (쿠팡 쪽 접속 인증 문제를 확인하고 있어요). 조금만 기다려주세요.
+      </p>
+    </div>
+    <div id="dashLive" style="display:none;">
+      <h2>오늘 대시보드 <span id="dashDate" style="font-size:12px; color:var(--ink-soft); font-weight:400;"></span></h2>
+      <div id="dashLoading" class="empty-note">불러오는 중...</div>
+      <div id="dashError" class="status err" style="display:none;"></div>
+      <div id="dashStats" style="display:none;">
+        <div class="stat-grid">
+          <div class="stat-box"><div class="stat-label">총매출</div><div class="stat-value" id="statRevenue">-</div></div>
+          <div class="stat-box"><div class="stat-label">주문건수</div><div class="stat-value" id="statOrders">-</div></div>
+          <div class="stat-box"><div class="stat-label">신규주문</div><div class="stat-value" id="statNew">-</div></div>
+          <div class="stat-box"><div class="stat-label">발송대기</div><div class="stat-value" id="statAwaiting">-</div></div>
+        </div>
+        <p class="hint" style="margin-top:0;">쿠팡 기준이에요. 문의·취소/반품/교환 건수와 네이버 연동은 아직 준비 중이에요.</p>
       </div>
-      <p class="hint" style="margin-top:0;">쿠팡 기준이에요. 문의·취소/반품/교환 건수와 네이버 연동은 아직 준비 중이에요.</p>
     </div>
   </div>
 
@@ -47,8 +56,17 @@
 </div></nav>
 
 <script>
+// Coupang's IP allowlist doesn't work with Supabase Edge Functions' rotating
+// outbound IPs yet - flip this back on once that's sorted out (see my.html /
+// the coupang-summary function, both still fully working under the hood).
+const COUPANG_DASHBOARD_LIVE = false;
+
 requireAuth(function(){
-  loadDashboard();
+  if(COUPANG_DASHBOARD_LIVE){
+    document.getElementById('dashComingSoon').style.display = 'none';
+    document.getElementById('dashLive').style.display = 'block';
+    loadDashboard();
+  }
 });
 
 async function loadDashboard(){
