@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
     const prompt = buildPrompt(input, category || "", tone || "친근하고 신뢰감 있게", brand || "");
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.6-flash",
       contents: prompt,
     });
 
