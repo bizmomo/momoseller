@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import Anthropic from "npm:@anthropic-ai/sdk";
+import { GoogleGenAI } from "npm:@google/genai";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -106,18 +106,13 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "상품 설명을 입력해주세요." }, 400);
     }
 
-    const anthropic = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
+    const ai = new GoogleGenAI({ apiKey: Deno.env.get("GEMINI_API_KEY") });
     const prompt = buildPrompt(input, category || "", tone || "친근하고 신뢰감 있게", brand || "");
 
-    const response = await anthropic.messages.create({
-      model: "claude-opus-5",
-      max_tokens: 2000,
-      messages: [{ role: "user", content: prompt }],
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
     });
-
-    const textBlock = response.content.find(
-      (block): block is Anthropic.TextBlock => block.type === "text",
-    );
 
     let remaining: number | null = null;
     if (!isPro) {
@@ -129,7 +124,7 @@ Deno.serve(async (req) => {
       remaining = Math.max(0, FREE_LIMIT - newCount);
     }
 
-    return jsonResponse({ result: textBlock?.text ?? "", remaining });
+    return jsonResponse({ result: response.text ?? "", remaining });
   } catch (err) {
     console.error(err);
     return jsonResponse({ error: "AI 생성 중 오류가 발생했어요. 잠시 후 다시 시도해주세요." }, 500);
