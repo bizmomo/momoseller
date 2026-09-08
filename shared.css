@@ -128,6 +128,11 @@ button.secondary:hover{ border-color: var(--accent); color: var(--accent-deep); 
 
 .foot-note{ margin-top: 20px; font-size: 12px; color: var(--ink-soft); line-height: 1.7; }
 
+.stat-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+.stat-box{ background:#FAF8F1; border:1px solid var(--line); border-radius:4px; padding:14px; }
+.stat-label{ font-size:12px; color:var(--ink-soft); margin-bottom:4px; }
+.stat-value{ font-size:20px; font-weight:700; color:var(--ink); }
+
 .soon-badge{
   display:inline-block; font-size:11.5px; color:var(--accent-deep); background:var(--teal-soft);
   border-radius:3px; padding:3px 8px; margin-bottom:10px;
