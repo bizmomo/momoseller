@@ -133,6 +133,13 @@ button.secondary:hover{ border-color: var(--accent); color: var(--accent-deep); 
   border-radius:3px; padding:3px 8px; margin-bottom:10px;
 }
 
+.my-link{
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+  text-decoration:none; color:var(--ink-soft); font-size:11px; white-space:nowrap;
+}
+.my-link .my-icon{ font-size:20px; line-height:1; }
+.my-link:hover{ color:var(--ink); }
+
 .bottom-nav{
   position: fixed; left:0; right:0; bottom:0;
   background: var(--card); border-top: 1px solid var(--line);

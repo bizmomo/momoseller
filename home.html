@@ -18,10 +18,7 @@
       <h1>홈</h1>
       <p>오늘의 매출·주문 현황을 한눈에 보여드릴 자리예요.</p>
     </div>
-    <div class="user-chip" id="userChip" style="display:none;">
-      <span id="userEmail"></span>
-      <button onclick="signOut()">로그아웃</button>
-    </div>
+    <a href="my.html" class="my-link"><span class="my-icon">👤</span><span>마이</span></a>
   </div>
 
   <div class="card">
@@ -44,9 +41,7 @@
 </div></nav>
 
 <script>
-requireAuth(function(user){
-  renderUserChip(user);
-});
+requireAuth(function(){});
 </script>
 </body>
 </html>
