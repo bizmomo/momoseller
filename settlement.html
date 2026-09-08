@@ -6,131 +6,23 @@
 <title>정산 정리기 | 모모셀러</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="shared.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<style>
-  :root{
-    --bg: #F1EFE6;
-    --card: #FFFEFA;
-    --ink: #23281F;
-    --ink-soft: #6B6F60;
-    --accent: #B9860E;
-    --accent-deep: #8C660A;
-    --teal: #2F6F63;
-    --teal-soft: #E3EFEA;
-    --line: #DCD6C2;
-    --error: #A6432F;
-  }
-  * { box-sizing: border-box; }
-  body{
-    margin:0;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: 'Noto Sans KR', system-ui, sans-serif;
-    padding: 28px 14px 80px;
-  }
-  .wrap{ max-width: 680px; margin: 0 auto; }
-  .back-link{
-    display:inline-block; font-size:13px; color:var(--ink-soft); text-decoration:none; margin-bottom:14px;
-  }
-  .back-link:hover{ color:var(--accent-deep); }
-  .masthead{ margin-bottom: 22px; }
-  .masthead h1{
-    font-family: 'Noto Serif KR', serif;
-    font-weight: 700;
-    font-size: 24px;
-    margin: 0 0 6px;
-  }
-  .masthead p{ margin: 0; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
-
-  .card{
-    position: relative;
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 24px 20px;
-    margin-bottom: 16px;
-    box-shadow: 0 1px 0 var(--line);
-  }
-  .card h2{
-    font-family: 'Noto Serif KR', serif;
-    font-size: 16px;
-    margin: 0 0 12px;
-  }
-  .upload-box{
-    border: 1px dashed var(--line);
-    border-radius: 4px;
-    padding: 16px;
-    text-align: center;
-    background: #FAF8F1;
-    margin-bottom: 10px;
-  }
-  .upload-box input[type=file]{
-    font-size: 13px;
-    width: 100%;
-  }
-  .file-status{ font-size: 12.5px; color: var(--teal); margin-top: 6px; min-height: 16px; }
-  .file-status.err{ color: var(--error); }
-
-  label{ display:block; font-size: 13px; color: var(--ink-soft); margin-bottom: 6px; }
-  .field-block{ margin-bottom: 10px; }
-  .row{ display:flex; gap: 10px; margin-bottom: 4px; }
-  input[type=number]{
-    width: 100%;
-    font-family: inherit;
-    font-size: 14px;
-    color: var(--ink);
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 3px;
-    padding: 9px 10px;
-  }
-  select{
-    width: 100%;
-    font-family: inherit;
-    font-size: 14px;
-    color: var(--ink);
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 3px;
-    padding: 9px 10px;
-  }
-  .hint{ font-size: 12px; color: var(--ink-soft); margin-top: 6px; line-height: 1.6; }
-
-  button.primary{
-    width: 100%;
-    background: var(--ink);
-    color: #FBF9F2;
-    border: none;
-    border-radius: 3px;
-    padding: 13px 16px;
-    font-size: 15px;
-    font-weight: 500;
-    font-family: 'Noto Sans KR', sans-serif;
-    cursor: pointer;
-  }
-  button.primary:disabled{ background: #9C9A8E; cursor: not-allowed; }
-  button.primary:hover:not(:disabled){ background: #3A4030; }
-
-  .status{ margin-top: 10px; font-size: 13px; color: var(--ink-soft); min-height: 18px; }
-  .status.err{ color: var(--error); }
-  .status.ok{ color: var(--teal); }
-
-  .result-box{ display:none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line); }
-  .result-box.show{ display:block; }
-  .result-summary{ font-size: 13.5px; line-height: 1.8; margin-bottom: 12px; }
-  .result-summary b{ color: var(--ink); }
-
-  .foot-note{ margin-top: 20px; font-size: 12px; color: var(--ink-soft); line-height: 1.7; }
-</style>
 </head>
 <body>
 <div class="wrap">
 
-  <a href="index.html" class="back-link">← 모모셀러로 돌아가기</a>
-
   <div class="masthead">
-    <h1>정산 정리기</h1>
-    <p>쿠팡·스마트스토어에서 받은 주문 엑셀을 올리면, 매출/수수료/순수익을 정리한 정산 요약 파일로 만들어드려요. 파일은 이 화면(브라우저) 안에서만 처리되고 어디로도 전송되지 않아요.</p>
+    <div>
+      <h1>정산 정리기</h1>
+      <p>쿠팡·스마트스토어에서 받은 주문 엑셀을 올리면, 매출/수수료/순수익을 정리한 정산 요약 파일로 만들어드려요. 파일은 이 화면(브라우저) 안에서만 처리되고 어디로도 전송되지 않아요.</p>
+    </div>
+    <div class="user-chip" id="userChip" style="display:none;">
+      <span id="userEmail"></span>
+      <button onclick="signOut()">로그아웃</button>
+    </div>
   </div>
 
   <div class="card">
@@ -194,7 +86,19 @@
   </div>
 </div>
 
+<nav class="bottom-nav"><div class="bottom-nav-inner">
+  <a href="home.html" class="nav-item"><span class="nav-icon">🏠</span><span>홈</span></a>
+  <a href="index.html" class="nav-item"><span class="nav-icon">✍️</span><span>프롬프트</span></a>
+  <a href="settlement.html" class="nav-item active"><span class="nav-icon">📊</span><span>정산</span></a>
+  <a href="analysis.html" class="nav-item"><span class="nav-icon">📈</span><span>분석</span></a>
+  <a href="history.html" class="nav-item"><span class="nav-icon">🗂️</span><span>기록</span></a>
+</div></nav>
+
 <script>
+requireAuth(function(user){
+  renderUserChip(user);
+});
+
 let coupangRows = null;
 let storeRows = null;
 let outputRows = null;

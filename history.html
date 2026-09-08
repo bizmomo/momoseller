@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>저장된 기록 | 모모셀러</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="shared.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div>
+      <h1>저장된 기록</h1>
+      <p>로그인한 계정에만 보여요. 다른 사람과 공유되지 않아요.</p>
+    </div>
+    <div class="user-chip" id="userChip" style="display:none;">
+      <span id="userEmail"></span>
+      <button onclick="signOut()">로그아웃</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>저장된 기록</h2>
+    <div id="historyList"><div class="empty-note">불러오는 중...</div></div>
+  </div>
+
+</div>
+
+<nav class="bottom-nav"><div class="bottom-nav-inner">
+  <a href="home.html" class="nav-item"><span class="nav-icon">🏠</span><span>홈</span></a>
+  <a href="index.html" class="nav-item"><span class="nav-icon">✍️</span><span>프롬프트</span></a>
+  <a href="settlement.html" class="nav-item"><span class="nav-icon">📊</span><span>정산</span></a>
+  <a href="analysis.html" class="nav-item"><span class="nav-icon">📈</span><span>분석</span></a>
+  <a href="history.html" class="nav-item active"><span class="nav-icon">🗂️</span><span>기록</span></a>
+</div></nav>
+
+<script>
+requireAuth(function(user){
+  renderUserChip(user);
+  loadHistory();
+});
+
+async function loadHistory(){
+  const listEl = document.getElementById('historyList');
+  listEl.innerHTML = '<div class="empty-note">불러오는 중...</div>';
+
+  const { data, error } = await sb
+    .from('product_prompts')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if(error){
+    listEl.innerHTML = `<div class="empty-note">불러오기 실패: ${escapeHtml(error.message)}</div>`;
+    return;
+  }
+
+  if(!data || data.length === 0){
+    listEl.innerHTML = '<div class="empty-note">아직 저장된 기록이 없어요.</div>';
+    return;
+  }
+
+  listEl.innerHTML = '';
+  data.forEach(row => {
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    const date = new Date(row.created_at);
+    const dateStr = `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,'0')}.${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+    div.innerHTML = `
+      <div class="hi-top">
+        <span class="hi-date">${dateStr}</span>
+      </div>
+      <div class="hi-input">${escapeHtml(row.input_text)}</div>
+      <div class="hi-actions">
+        <button class="mini-btn" onclick="viewHistoryItem('${row.id}')">불러오기</button>
+        <button class="mini-btn danger" onclick="deleteHistoryItem('${row.id}')">삭제</button>
+      </div>
+    `;
+    listEl.appendChild(div);
+  });
+
+  window._historyCache = data;
+}
+
+function viewHistoryItem(id){
+  const row = (window._historyCache || []).find(r => r.id === id);
+  if(!row) return;
+  sessionStorage.setItem('momoseller_load_prompt', JSON.stringify(row));
+  window.location.href = 'index.html';
+}
+
+async function deleteHistoryItem(id){
+  const { error } = await sb.from('product_prompts').delete().eq('id', id);
+  if(!error){
+    loadHistory();
+  }
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

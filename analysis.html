@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>분석 | 모모셀러</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="shared.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div>
+      <h1>분석</h1>
+      <p>매출 추이와 잘 팔리는 상품을 살펴보는 자리예요.</p>
+    </div>
+    <div class="user-chip" id="userChip" style="display:none;">
+      <span id="userEmail"></span>
+      <button onclick="signOut()">로그아웃</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="soon-badge">연동 준비 중</span>
+    <h2>매출 분석</h2>
+    <p class="hint" style="margin-top:0;">
+      기간별(오늘/최근 7일/최근 30일/이번 달 등) 매출 추이 그래프, 플랫폼별·상품별·일자별 매출, 전월 대비 증감률을 여기서 보여드릴 예정이에요.
+    </p>
+  </div>
+
+  <div class="card">
+    <span class="soon-badge">연동 준비 중</span>
+    <h2>🏆 판매 TOP</h2>
+    <p class="hint" style="margin-top:0;">
+      잘 팔리는 상품 순위와, 상품을 누르면 쿠팡·스마트스토어별 판매량, 최근 7일/30일 판매량 같은 상세 정보를 보여드릴 예정이에요.
+    </p>
+  </div>
+
+  <div class="foot-note">두 가지 다 쿠팡윙·네이버 커머스API 연동이 끝나야 실제 데이터로 채워져요. 아직 API 키 발급 전이라 화면만 먼저 만들어뒀어요.</div>
+
+</div>
+
+<nav class="bottom-nav"><div class="bottom-nav-inner">
+  <a href="home.html" class="nav-item"><span class="nav-icon">🏠</span><span>홈</span></a>
+  <a href="index.html" class="nav-item"><span class="nav-icon">✍️</span><span>프롬프트</span></a>
+  <a href="settlement.html" class="nav-item"><span class="nav-icon">📊</span><span>정산</span></a>
+  <a href="analysis.html" class="nav-item active"><span class="nav-icon">📈</span><span>분석</span></a>
+  <a href="history.html" class="nav-item"><span class="nav-icon">🗂️</span><span>기록</span></a>
+</div></nav>
+
+<script>
+requireAuth(function(user){
+  renderUserChip(user);
+});
+</script>
+</body>
+</html>

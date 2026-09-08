@@ -6,138 +6,14 @@
 <title>모모셀러</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="shared.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
 <style>
-  :root{
-    --bg: #F1EFE6;
-    --card: #FFFEFA;
-    --ink: #23281F;
-    --ink-soft: #6B6F60;
-    --accent: #B9860E;
-    --accent-deep: #8C660A;
-    --teal: #2F6F63;
-    --teal-soft: #E3EFEA;
-    --line: #DCD6C2;
-    --error: #A6432F;
-  }
-  * { box-sizing: border-box; }
-  body{
-    margin:0;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: 'Noto Sans KR', system-ui, sans-serif;
-    padding: 28px 14px 80px;
-  }
-  .wrap{ max-width: 640px; margin: 0 auto; }
-  .masthead{ margin-bottom: 20px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
-  .masthead h1{ font-family: 'Noto Serif KR', serif; font-weight: 700; font-size: 24px; margin: 0 0 6px; }
-  .masthead p{ margin: 0; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
-
-  .user-chip{ font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; text-align:right; }
-  .user-chip button{
-    display:block; margin-top:4px; border:1px solid var(--line); background:#fff; color:var(--ink-soft);
-    font-size:12px; padding:4px 10px; border-radius:3px; cursor:pointer;
-  }
-
-  .card{
-    position: relative;
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 26px 20px;
-    margin-bottom: 16px;
-    box-shadow: 0 1px 0 var(--line);
-  }
-  .card h2{ font-family: 'Noto Serif KR', serif; font-size: 16px; margin: 0 0 12px; }
-
-  label{ display:block; font-size: 13px; color: var(--ink-soft); margin-bottom: 6px; }
-  input[type=email], input[type=password], input[type=text], select, textarea{
-    width: 100%;
-    font-family: inherit;
-    font-size: 14px;
-    color: var(--ink);
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 3px;
-    padding: 10px 12px;
-  }
-  .field-block{ margin-bottom: 14px; }
-  .row{ display:flex; gap: 10px; }
-  .row > div{ flex:1; }
-
-  button.primary{
-    width: 100%;
-    background: var(--ink);
-    color: #FBF9F2;
-    border: none;
-    border-radius: 3px;
-    padding: 13px 16px;
-    font-size: 15px;
-    font-weight: 500;
-    font-family: 'Noto Sans KR', sans-serif;
-    cursor: pointer;
-  }
-  button.primary:disabled{ background: #9C9A8E; cursor: not-allowed; }
-  button.primary:hover:not(:disabled){ background: #3A4030; }
-  button.secondary{
-    width: 100%;
-    background: #fff;
-    color: var(--ink-soft);
-    border: 1px solid var(--line);
-    border-radius: 3px;
-    padding: 10px 16px;
-    font-size: 13.5px;
-    cursor: pointer;
-    margin-top: 8px;
-  }
-  button.secondary:hover{ border-color: var(--accent); color: var(--accent-deep); }
-
-  .status{ margin-top: 10px; font-size: 13px; color: var(--ink-soft); min-height: 18px; }
-  .status.err{ color: var(--error); }
-  .status.ok{ color: var(--teal); }
-
-  .tabs{ display:flex; gap:6px; margin-bottom:16px; }
-  .tab-btn{
-    flex:1; text-align:center; padding:9px 10px; font-size:13.5px;
-    border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:3px; cursor:pointer;
-  }
-  .tab-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); }
-
   #authView{ display:block; }
   #appView{ display:none; }
   #authSignin{ display:block; }
   #authSignup{ display:none; }
-
-  .switch-link{ font-size:12.5px; color:var(--accent-deep); text-align:center; margin-top:12px; cursor:pointer; text-decoration:underline; }
-
-  .promptOut{
-    width:100%; min-height:180px; font-size:13px; line-height:1.6;
-    background:#FAF8F1; border:1px solid var(--line); border-radius:3px; padding:12px;
-  }
-  .hint{ font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.6; }
-
-  .tool-link{
-    display:block; text-align:center; font-size:13px; color:var(--accent-deep); text-decoration:none;
-    border:1px solid var(--line); border-radius:3px; padding:11px 12px; background:#fff; margin-bottom:16px;
-  }
-  .tool-link:hover{ border-color:var(--accent); }
-
-  .history-item{
-    border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px; margin-bottom: 10px; background:#fff;
-  }
-  .history-item .hi-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
-  .history-item .hi-date{ font-size:11.5px; color:var(--ink-soft); }
-  .history-item .hi-input{ font-size:13.5px; line-height:1.5; margin-bottom:8px; }
-  .history-item .hi-actions{ display:flex; gap:8px; }
-  .mini-btn{
-    border:1px solid var(--line); background:#fff; color:var(--ink-soft); font-size:12px;
-    padding:5px 10px; border-radius:3px; cursor:pointer;
-  }
-  .mini-btn:hover{ border-color:var(--accent); color:var(--accent-deep); }
-  .mini-btn.danger:hover{ border-color:var(--error); color:var(--error); }
-  .empty-note{ font-size:13px; color:var(--ink-soft); text-align:center; padding:20px 0; }
-
-  .foot-note{ margin-top: 20px; font-size: 12px; color: var(--ink-soft); line-height: 1.7; }
 </style>
 </head>
 <body>
@@ -191,83 +67,68 @@
 
   <!-- 로그인 후 화면 -->
   <div id="appView">
-    <div class="tabs">
-      <div class="tab-btn active" id="tabGenBtn" onclick="setTab('gen')">프롬프트 만들기</div>
-      <div class="tab-btn" id="tabHistBtn" onclick="setTab('hist')">저장된 기록</div>
+    <div class="card">
+      <h2>상품 정보</h2>
+      <div class="row" style="margin-bottom:14px;">
+        <div>
+          <label for="category">카테고리</label>
+          <select id="category">
+            <option value="">선택 안 함</option>
+            <option value="패션/의류">패션/의류</option>
+            <option value="뷰티">뷰티</option>
+            <option value="식품">식품</option>
+            <option value="생활/잡화">생활/잡화</option>
+            <option value="전자기기">전자기기</option>
+            <option value="유아동">유아동</option>
+            <option value="반려동물">반려동물</option>
+            <option value="기타">기타</option>
+          </select>
+        </div>
+        <div>
+          <label for="tone">톤</label>
+          <select id="tone">
+            <option value="친근하고 신뢰감 있게">친근하게</option>
+            <option value="전문적이고 신뢰감 있게">전문적으로</option>
+            <option value="트렌디하고 감각적으로">트렌디하게</option>
+            <option value="가성비를 강조하며 실속있게">가성비 강조</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-block">
+        <label for="brand">브랜드명 (없으면 비워두세요)</label>
+        <input type="text" id="brand" placeholder="예) JAJU">
+      </div>
+      <div class="field-block">
+        <label for="input">상품 설명 (대충 적어도 돼요)</label>
+        <textarea id="input" style="min-height:84px;" placeholder="예) 겨울에 입는 두꺼운 기모 후드티, 남녀공용, 색은 검정 회색 베이지 3가지, 원단 도톰함"></textarea>
+      </div>
+      <button class="primary" onclick="generatePrompt()">프롬프트 만들기</button>
+      <div class="status" id="genStatus"></div>
     </div>
 
-    <div id="genTab">
-      <div class="card">
-        <h2>상품 정보</h2>
-        <div class="row" style="margin-bottom:14px;">
-          <div>
-            <label for="category">카테고리</label>
-            <select id="category">
-              <option value="">선택 안 함</option>
-              <option value="패션/의류">패션/의류</option>
-              <option value="뷰티">뷰티</option>
-              <option value="식품">식품</option>
-              <option value="생활/잡화">생활/잡화</option>
-              <option value="전자기기">전자기기</option>
-              <option value="유아동">유아동</option>
-              <option value="반려동물">반려동물</option>
-              <option value="기타">기타</option>
-            </select>
-          </div>
-          <div>
-            <label for="tone">톤</label>
-            <select id="tone">
-              <option value="친근하고 신뢰감 있게">친근하게</option>
-              <option value="전문적이고 신뢰감 있게">전문적으로</option>
-              <option value="트렌디하고 감각적으로">트렌디하게</option>
-              <option value="가성비를 강조하며 실속있게">가성비 강조</option>
-            </select>
-          </div>
-        </div>
-        <div class="field-block">
-          <label for="brand">브랜드명 (없으면 비워두세요)</label>
-          <input type="text" id="brand" placeholder="예) JAJU">
-        </div>
-        <div class="field-block">
-          <label for="input">상품 설명 (대충 적어도 돼요)</label>
-          <textarea id="input" style="min-height:84px;" placeholder="예) 겨울에 입는 두꺼운 기모 후드티, 남녀공용, 색은 검정 회색 베이지 3가지, 원단 도톰함"></textarea>
-        </div>
-        <button class="primary" onclick="generatePrompt()">프롬프트 만들기</button>
-        <div class="status" id="genStatus"></div>
-      </div>
-
-      <div class="card" id="resultCard" style="display:none;">
-        <h2>Claude로 보낼 내용 (수정 가능)</h2>
-        <textarea class="promptOut" id="promptOut"></textarea>
-        <div class="hint">내용을 여기서 바로 고칠 수 있어요.</div>
-        <button class="primary" style="margin-top:10px;" onclick="copyPrompt()">복사하기</button>
-        <button class="secondary" onclick="openInClaude()">Claude에서 열기</button>
-        <button class="secondary" onclick="saveToHistory()">내 계정에 저장하기</button>
-        <div class="status" id="saveStatus"></div>
-      </div>
+    <div class="card" id="resultCard" style="display:none;">
+      <h2>Claude로 보낼 내용 (수정 가능)</h2>
+      <textarea class="promptOut" id="promptOut"></textarea>
+      <div class="hint">내용을 여기서 바로 고칠 수 있어요.</div>
+      <button class="primary" style="margin-top:10px;" onclick="copyPrompt()">복사하기</button>
+      <button class="secondary" onclick="openInClaude()">Claude에서 열기</button>
+      <button class="secondary" onclick="saveToHistory()">내 계정에 저장하기</button>
+      <div class="status" id="saveStatus"></div>
     </div>
-
-    <div id="histTab" style="display:none;">
-      <div class="card">
-        <h2>저장된 기록</h2>
-        <div id="historyList"><div class="empty-note">불러오는 중...</div></div>
-      </div>
-    </div>
-
-    <a href="settlement.html" class="tool-link">📊 정산 정리 도구 열기 — 쿠팡·스마트스토어 엑셀로 정산 요약 만들기 (새 페이지)</a>
-
-    <div class="foot-note">저장된 기록은 로그인한 계정에만 보여요. 다른 사람과 공유되지 않아요.</div>
   </div>
 
 </div>
 
-<script>
-const SUPABASE_URL = 'https://aangpllxztgyoflioqai.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_ay-HMiHrtPqZpYEfzsXFAA_AOgVwOT_';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+<nav class="bottom-nav"><div class="bottom-nav-inner">
+  <a href="home.html" class="nav-item"><span class="nav-icon">🏠</span><span>홈</span></a>
+  <a href="index.html" class="nav-item active"><span class="nav-icon">✍️</span><span>프롬프트</span></a>
+  <a href="settlement.html" class="nav-item"><span class="nav-icon">📊</span><span>정산</span></a>
+  <a href="analysis.html" class="nav-item"><span class="nav-icon">📈</span><span>분석</span></a>
+  <a href="history.html" class="nav-item"><span class="nav-icon">🗂️</span><span>기록</span></a>
+</div></nav>
 
+<script>
 let currentUser = null;
-let currentTab = 'gen';
 
 async function init(){
   const { data: { session } } = await sb.auth.getSession();
@@ -288,9 +149,8 @@ function onLoggedIn(user){
   currentUser = user;
   document.getElementById('authView').style.display = 'none';
   document.getElementById('appView').style.display = 'block';
-  document.getElementById('userChip').style.display = 'block';
-  document.getElementById('userEmail').textContent = user.email;
-  loadHistory();
+  renderUserChip(user);
+  loadHandoffPrompt();
 }
 
 function onLoggedOut(){
@@ -353,19 +213,6 @@ async function signIn(){
     return;
   }
   statusEl.textContent = '';
-}
-
-async function signOut(){
-  await sb.auth.signOut();
-}
-
-function setTab(tab){
-  currentTab = tab;
-  document.getElementById('tabGenBtn').classList.toggle('active', tab === 'gen');
-  document.getElementById('tabHistBtn').classList.toggle('active', tab === 'hist');
-  document.getElementById('genTab').style.display = tab === 'gen' ? 'block' : 'none';
-  document.getElementById('histTab').style.display = tab === 'hist' ? 'block' : 'none';
-  if(tab === 'hist') loadHistory();
 }
 
 const RULES_TEXT = `[상품명 규칙]
@@ -478,72 +325,21 @@ async function saveToHistory(){
   statusEl.className = 'status ok';
 }
 
-async function loadHistory(){
-  if(!currentUser) return;
-  const listEl = document.getElementById('historyList');
-  listEl.innerHTML = '<div class="empty-note">불러오는 중...</div>';
-
-  const { data, error } = await sb
-    .from('product_prompts')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(50);
-
-  if(error){
-    listEl.innerHTML = `<div class="empty-note">불러오기 실패: ${escapeHtml(error.message)}</div>`;
-    return;
+function loadHandoffPrompt(){
+  const raw = sessionStorage.getItem('momoseller_load_prompt');
+  if(!raw) return;
+  sessionStorage.removeItem('momoseller_load_prompt');
+  try{
+    const row = JSON.parse(raw);
+    document.getElementById('input').value = row.input_text || '';
+    document.getElementById('category').value = row.category || '';
+    document.getElementById('tone').value = row.tone || '친근하고 신뢰감 있게';
+    document.getElementById('brand').value = row.brand || '';
+    document.getElementById('promptOut').value = row.prompt_text || '';
+    document.getElementById('resultCard').style.display = 'block';
+  } catch(err){
+    console.error(err);
   }
-
-  if(!data || data.length === 0){
-    listEl.innerHTML = '<div class="empty-note">아직 저장된 기록이 없어요.</div>';
-    return;
-  }
-
-  listEl.innerHTML = '';
-  data.forEach(row => {
-    const div = document.createElement('div');
-    div.className = 'history-item';
-    const date = new Date(row.created_at);
-    const dateStr = `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,'0')}.${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
-    div.innerHTML = `
-      <div class="hi-top">
-        <span class="hi-date">${dateStr}</span>
-      </div>
-      <div class="hi-input">${escapeHtml(row.input_text)}</div>
-      <div class="hi-actions">
-        <button class="mini-btn" onclick="viewHistoryItem('${row.id}')">불러오기</button>
-        <button class="mini-btn danger" onclick="deleteHistoryItem('${row.id}')">삭제</button>
-      </div>
-    `;
-    listEl.appendChild(div);
-  });
-
-  window._historyCache = data;
-}
-
-function viewHistoryItem(id){
-  const row = (window._historyCache || []).find(r => r.id === id);
-  if(!row) return;
-  document.getElementById('input').value = row.input_text || '';
-  document.getElementById('category').value = row.category || '';
-  document.getElementById('tone').value = row.tone || '친근하고 신뢰감 있게';
-  document.getElementById('brand').value = row.brand || '';
-  document.getElementById('promptOut').value = row.prompt_text || '';
-  document.getElementById('resultCard').style.display = 'block';
-  setTab('gen');
-}
-
-async function deleteHistoryItem(id){
-  const { error } = await sb.from('product_prompts').delete().eq('id', id);
-  if(!error){
-    loadHistory();
-  }
-}
-
-function escapeHtml(str){
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }
 </script>
 </body>
