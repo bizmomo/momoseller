@@ -7,7 +7,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg: #F1EFE6;
@@ -441,6 +440,22 @@ function setTab(tab){
   document.getElementById('settleTab').style.display = tab === 'settle' ? 'block' : 'none';
   document.getElementById('histTab').style.display = tab === 'hist' ? 'block' : 'none';
   if(tab === 'hist') loadHistory();
+  if(tab === 'settle') ensureXLSX().catch(() => {});
+}
+
+let xlsxLoadPromise = null;
+function ensureXLSX(){
+  if(typeof XLSX !== 'undefined') return Promise.resolve();
+  if(!xlsxLoadPromise){
+    xlsxLoadPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      script.onload = () => resolve();
+      script.onerror = () => { xlsxLoadPromise = null; reject(new Error('xlsx load failed')); };
+      document.head.appendChild(script);
+    });
+  }
+  return xlsxLoadPromise;
 }
 
 const RULES_TEXT = `[상품명 규칙]
@@ -647,34 +662,40 @@ document.getElementById('settleStoreFile').addEventListener('change', function(e
 function handleSettleUpload(file, kind){
   const statusEl = document.getElementById(kind === 'coupang' ? 'settleCoupangStatus' : 'settleStoreStatus');
   if(!file){ return; }
-  const reader = new FileReader();
-  reader.onload = function(e){
-    try{
-      const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type: 'array', cellDates: true });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
-      if(kind === 'coupang'){
-        settleCoupangRows = parseCoupang(aoa);
-        if(settleCoupangRows.length === 0){
-          setSettleFileStatus(statusEl, '쿠팡 주문 데이터를 못 찾았어요. 원본 형식이 맞는지 확인해주세요.', 'err');
+  setSettleFileStatus(statusEl, '엑셀 처리 기능을 불러오는 중...', '');
+  ensureXLSX().then(() => {
+    const reader = new FileReader();
+    reader.onload = function(e){
+      try{
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array', cellDates: true });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
+        if(kind === 'coupang'){
+          settleCoupangRows = parseCoupang(aoa);
+          if(settleCoupangRows.length === 0){
+            setSettleFileStatus(statusEl, '쿠팡 주문 데이터를 못 찾았어요. 원본 형식이 맞는지 확인해주세요.', 'err');
+          } else {
+            setSettleFileStatus(statusEl, `쿠팡 주문 ${settleCoupangRows.length}건 인식됨`, '');
+          }
         } else {
-          setSettleFileStatus(statusEl, `쿠팡 주문 ${settleCoupangRows.length}건 인식됨`, '');
+          settleStoreRows = parseStore(aoa);
+          if(settleStoreRows.length === 0){
+            setSettleFileStatus(statusEl, '스마트스토어 주문 데이터를 못 찾았어요. 원본 형식이 맞는지 확인해주세요.', 'err');
+          } else {
+            setSettleFileStatus(statusEl, `스마트스토어 주문 ${settleStoreRows.length}건 인식됨`, '');
+          }
         }
-      } else {
-        settleStoreRows = parseStore(aoa);
-        if(settleStoreRows.length === 0){
-          setSettleFileStatus(statusEl, '스마트스토어 주문 데이터를 못 찾았어요. 원본 형식이 맞는지 확인해주세요.', 'err');
-        } else {
-          setSettleFileStatus(statusEl, `스마트스토어 주문 ${settleStoreRows.length}건 인식됨`, '');
-        }
+      } catch(err){
+        console.error(err);
+        setSettleFileStatus(statusEl, '파일을 읽는 데 실패했어요. xlsx 파일이 맞는지 확인해주세요.', 'err');
       }
-    } catch(err){
-      console.error(err);
-      setSettleFileStatus(statusEl, '파일을 읽는 데 실패했어요. xlsx 파일이 맞는지 확인해주세요.', 'err');
-    }
-  };
-  reader.readAsArrayBuffer(file);
+    };
+    reader.readAsArrayBuffer(file);
+  }).catch(err => {
+    console.error(err);
+    setSettleFileStatus(statusEl, '엑셀 처리 기능을 불러오지 못했어요. 인터넷 연결을 확인해주세요.', 'err');
+  });
 }
 
 function findHeaderRow(aoa, mustContainAny){
