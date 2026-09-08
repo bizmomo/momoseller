@@ -168,10 +168,11 @@ let aiIsPro = false;
 
 async function checkAiAccess(){
   const btn = document.getElementById('aiGenBtn');
-  const { data } = await sb.from('profiles').select('is_pro, ai_generations_used').eq('id', currentUser.id).single();
+  const { data } = await sb.from('profiles').select('is_pro, ai_generations_used, ai_generations_limit').eq('id', currentUser.id).single();
   aiIsPro = !!(data && data.is_pro);
   const used = (data && data.ai_generations_used) || 0;
-  updateAiButtonLabel(aiIsPro, Math.max(0, AI_FREE_LIMIT - used));
+  const limit = (data && data.ai_generations_limit) ?? AI_FREE_LIMIT;
+  updateAiButtonLabel(aiIsPro, Math.max(0, limit - used));
   btn.style.display = 'block';
 }
 

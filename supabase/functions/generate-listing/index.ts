@@ -87,16 +87,17 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("is_pro, ai_generations_used")
+      .select("is_pro, ai_generations_used, ai_generations_limit")
       .eq("id", user.id)
       .single();
 
     const isPro = profile?.is_pro ?? false;
     const usedCount = profile?.ai_generations_used ?? 0;
+    const limit = profile?.ai_generations_limit ?? FREE_LIMIT;
 
-    if (!isPro && usedCount >= FREE_LIMIT) {
+    if (!isPro && usedCount >= limit) {
       return jsonResponse({
-        error: `무료 생성 ${FREE_LIMIT}개를 모두 사용하셨어요. 계속 쓰시려면 Pro 계정 전환이 필요해요.`,
+        error: `무료 생성 ${limit}개를 모두 사용하셨어요. 계속 쓰시려면 충전이 필요해요.`,
         limitReached: true,
       }, 403);
     }
@@ -121,7 +122,7 @@ Deno.serve(async (req) => {
         .from("profiles")
         .update({ ai_generations_used: newCount })
         .eq("id", user.id);
-      remaining = Math.max(0, FREE_LIMIT - newCount);
+      remaining = Math.max(0, limit - newCount);
     }
 
     return jsonResponse({ result: response.text ?? "", remaining });
