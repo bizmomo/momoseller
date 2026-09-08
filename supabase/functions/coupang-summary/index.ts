@@ -12,6 +12,21 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+async function getEncryptionKey(): Promise<CryptoKey> {
+  const rawKey = Deno.env.get("CREDENTIALS_ENCRYPTION_KEY")!;
+  const keyBytes = Uint8Array.from(atob(rawKey), (c) => c.charCodeAt(0));
+  return crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
+}
+
+async function decryptSecret(encoded: string): Promise<string> {
+  const key = await getEncryptionKey();
+  const combined = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+  const iv = combined.slice(0, 12);
+  const ciphertext = combined.slice(12);
+  const plaintextBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+  return new TextDecoder().decode(plaintextBuf);
+}
+
 async function hmacSha256Hex(key: string, message: string): Promise<string> {
   const enc = new TextEncoder();
   const cryptoKey = await crypto.subtle.importKey(
@@ -30,11 +45,13 @@ function getSignedDate(): string {
   return new Date().toISOString().slice(2, 19).replace(/[-:]/g, "") + "Z";
 }
 
-async function callCoupangApi(path: string, query: string) {
-  const accessKey = Deno.env.get("COUPANG_ACCESS_KEY")!;
-  const secretKey = Deno.env.get("COUPANG_SECRET_KEY")!;
-  const vendorId = Deno.env.get("COUPANG_VENDOR_ID")!;
-
+async function callCoupangApi(
+  path: string,
+  query: string,
+  vendorId: string,
+  accessKey: string,
+  secretKey: string,
+) {
   const signedDate = getSignedDate();
   const message = signedDate + "GET" + path + query;
   const signature = await hmacSha256Hex(secretKey, message);
@@ -80,12 +97,30 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "로그인이 필요해요." }, 401);
     }
 
-    const vendorId = Deno.env.get("COUPANG_VENDOR_ID")!;
+    const adminClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("coupang_vendor_id, coupang_access_key_enc, coupang_secret_key_enc")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.coupang_vendor_id || !profile?.coupang_access_key_enc || !profile?.coupang_secret_key_enc) {
+      return jsonResponse({ error: "쿠팡 연동이 안 되어 있어요. 마이페이지에서 먼저 연결해주세요." }, 400);
+    }
+
+    const vendorId = profile.coupang_vendor_id;
+    const accessKey = await decryptSecret(profile.coupang_access_key_enc);
+    const secretKey = await decryptSecret(profile.coupang_secret_key_enc);
+
     const date = todayKstDate();
     const path = `/v2/providers/openapi/apis/api/v5/vendors/${vendorId}/ordersheets`;
     const query = `createdAtFrom=${date}&createdAtTo=${date}&maxPerPage=50`;
 
-    const result = await callCoupangApi(path, query);
+    const result = await callCoupangApi(path, query, vendorId, accessKey, secretKey);
     // deno-lint-ignore no-explicit-any
     const orders: any[] = result?.data ?? [];
 
