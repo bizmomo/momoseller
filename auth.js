@@ -27,3 +27,16 @@ function renderUserChip(user){
 async function signOut(){
   await sb.auth.signOut();
 }
+
+// supabase-js only sets a generic "non-2xx status code" message on invoke()
+// errors - the actual reason is in the response body, on error.context.
+async function getInvokeErrorMessage(error){
+  if(!error) return '알 수 없는 오류';
+  if(error.context && typeof error.context.json === 'function'){
+    try {
+      const body = await error.context.clone().json();
+      if(body && body.error) return body.error;
+    } catch(e){}
+  }
+  return error.message || '알 수 없는 오류';
+}
