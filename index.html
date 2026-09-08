@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>상품 등록 문구 생성기</title>
+<title>모모셀러</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --bg: #F1EFE6;
@@ -27,74 +28,30 @@
     font-family: 'Noto Sans KR', system-ui, sans-serif;
     padding: 28px 14px 80px;
   }
-  .wrap{ max-width: 720px; margin: 0 auto; }
+  .wrap{ max-width: 640px; margin: 0 auto; }
+  .masthead{ margin-bottom: 20px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+  .masthead h1{ font-family: 'Noto Serif KR', serif; font-weight: 700; font-size: 24px; margin: 0 0 6px; }
+  .masthead p{ margin: 0; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
 
-  .masthead{ margin-bottom: 22px; }
-  .masthead h1{
-    font-family: 'Noto Serif KR', serif;
-    font-weight: 700;
-    font-size: 24px;
-    margin: 0 0 6px;
-    letter-spacing: -0.01em;
-  }
-  .masthead p{
-    margin: 0;
-    color: var(--ink-soft);
-    font-size: 13.5px;
-    line-height: 1.6;
+  .user-chip{ font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; text-align:right; }
+  .user-chip button{
+    display:block; margin-top:4px; border:1px solid var(--line); background:#fff; color:var(--ink-soft);
+    font-size:12px; padding:4px 10px; border-radius:3px; cursor:pointer;
   }
 
-  .mode-toggle{
-    display:flex;
-    gap: 6px;
-    margin-bottom: 16px;
-  }
-  .mode-btn{
-    flex:1;
-    text-align:center;
-    padding: 9px 10px;
-    font-size: 13.5px;
-    border: 1px solid var(--line);
-    background: #fff;
-    color: var(--ink-soft);
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  .mode-btn.active{
-    background: var(--ink);
-    color: #FBF9F2;
-    border-color: var(--ink);
-  }
-
-  .tag-card{
+  .card{
     position: relative;
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 4px;
-    padding: 26px 20px 22px;
+    padding: 26px 20px;
+    margin-bottom: 16px;
     box-shadow: 0 1px 0 var(--line);
   }
-  .punch{
-    position: absolute;
-    top: -10px; left: 26px;
-    width: 20px; height: 20px;
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: 50%;
-  }
+  .card h2{ font-family: 'Noto Serif KR', serif; font-size: 16px; margin: 0 0 12px; }
 
-  label{
-    display:block;
-    font-size: 13px;
-    color: var(--ink-soft);
-    margin-bottom: 6px;
-  }
-  .row{
-    display:flex;
-    gap: 10px;
-    margin-bottom: 14px;
-  }
-  select, textarea{
+  label{ display:block; font-size: 13px; color: var(--ink-soft); margin-bottom: 6px; }
+  input[type=email], input[type=password], input[type=text], select, textarea{
     width: 100%;
     font-family: inherit;
     font-size: 14px;
@@ -104,41 +61,11 @@
     border-radius: 3px;
     padding: 10px 12px;
   }
-  select{ appearance: none; cursor: pointer; }
-  textarea{
-    resize: vertical;
-    line-height: 1.6;
-  }
-  #input{ min-height: 84px; }
-  #batchInput{ min-height: 150px; }
-  .hint{
-    font-size: 12px;
-    color: var(--ink-soft);
-    margin-top: 4px;
-  }
-  .field-block{ margin-bottom: 16px; }
+  .field-block{ margin-bottom: 14px; }
+  .row{ display:flex; gap: 10px; }
+  .row > div{ flex:1; }
 
-  .guide-box{
-    background: var(--teal-soft);
-    border: 1px solid #CFE2DA;
-    border-radius: 4px;
-    padding: 12px 14px;
-    margin-bottom: 14px;
-    font-size: 13px;
-    color: var(--teal);
-  }
-  .guide-box strong{
-    display:block;
-    margin-bottom: 6px;
-    font-size: 13.5px;
-  }
-  .guide-box ol{
-    margin: 0;
-    padding-left: 18px;
-    line-height: 1.7;
-  }
-
-  button.generate{
+  button.primary{
     width: 100%;
     background: var(--ink);
     color: #FBF9F2;
@@ -150,472 +77,460 @@
     font-family: 'Noto Sans KR', sans-serif;
     cursor: pointer;
   }
-  button.generate:disabled{ background: #9C9A8E; cursor: not-allowed; }
-  button.generate:hover:not(:disabled){ background: #3A4030; }
-
-  .status{
-    margin-top: 10px;
-    font-size: 13px;
+  button.primary:disabled{ background: #9C9A8E; cursor: not-allowed; }
+  button.primary:hover:not(:disabled){ background: #3A4030; }
+  button.secondary{
+    width: 100%;
+    background: #fff;
     color: var(--ink-soft);
-    min-height: 18px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 10px 16px;
+    font-size: 13.5px;
+    cursor: pointer;
+    margin-top: 8px;
   }
+  button.secondary:hover{ border-color: var(--accent); color: var(--accent-deep); }
+
+  .status{ margin-top: 10px; font-size: 13px; color: var(--ink-soft); min-height: 18px; }
   .status.err{ color: var(--error); }
+  .status.ok{ color: var(--teal); }
 
-  /* 단건 결과 */
-  .receipt{
-    margin-top: 22px;
-    padding-top: 20px;
-    border-top: 1px dashed var(--line);
-    display: none;
+  .tabs{ display:flex; gap:6px; margin-bottom:16px; }
+  .tab-btn{
+    flex:1; text-align:center; padding:9px 10px; font-size:13.5px;
+    border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:3px; cursor:pointer;
   }
-  .receipt.show{ display:block; }
-  .sec{ margin-bottom: 22px; }
-  .sec:last-child{ margin-bottom: 0; }
-  .sec-head{
-    display:flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 10px;
-  }
-  .sec-head h2{
-    font-family: 'Noto Serif KR', serif;
-    font-size: 15px;
-    font-weight: 700;
-    margin: 0;
-  }
-  .copy-all{
-    border: none;
-    background: none;
-    color: var(--accent-deep);
-    font-size: 12px;
-    cursor: pointer;
-    padding: 2px 0;
-  }
-  .copy-all:hover{ text-decoration: underline; }
-  .name-item{
-    display:flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 0;
-    border-bottom: 1px solid #EFEBDD;
-    font-size: 14.5px;
-    line-height: 1.5;
-  }
-  .name-item:last-child{ border-bottom: none; }
-  .name-text{ flex: 1; }
-  .copy-btn{
-    flex-shrink: 0;
-    border: 1px solid var(--line);
-    background: #fff;
-    color: var(--ink-soft);
-    font-size: 12px;
-    padding: 5px 10px;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  .copy-btn:hover{ border-color: var(--accent); color: var(--accent-deep); }
-  .copy-btn.done{ color: var(--teal); border-color: var(--teal); }
-  .tags{ display:flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-  .tag{ background: var(--teal-soft); color: var(--teal); font-size: 13px; padding: 5px 11px; border-radius: 100px; }
-  .desc-box{ font-size: 14.5px; line-height: 1.75; white-space: pre-wrap; margin-bottom: 10px; }
+  .tab-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); }
 
-  /* 일괄 결과 테이블 */
-  .table-wrap{
-    margin-top: 22px;
-    padding-top: 20px;
-    border-top: 1px dashed var(--line);
-    display: none;
-  }
-  .table-wrap.show{ display:block; }
-  .table-head{
-    display:flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-  }
-  .table-head h2{
-    font-family: 'Noto Serif KR', serif;
-    font-size: 15px;
-    margin: 0;
-  }
-  .copy-tsv{
-    border: 1px solid var(--ink);
-    background: var(--ink);
-    color: #FBF9F2;
-    font-size: 12.5px;
-    padding: 7px 12px;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  .copy-tsv:hover{ background: #3A4030; }
-  .result-row{
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 14px 16px;
-    margin-bottom: 10px;
-  }
-  .result-row .rr-src{
-    font-size: 12px;
-    color: var(--ink-soft);
-    margin-bottom: 8px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #EFEBDD;
-  }
-  .rr-field{ margin-bottom: 8px; font-size: 13.5px; line-height: 1.6; }
-  .rr-field:last-child{ margin-bottom: 0; }
-  .rr-label{ color: var(--ink-soft); font-size: 11.5px; margin-right: 4px; }
-  .rr-pending{ color: var(--ink-soft); font-size: 13px; font-style: italic; }
-  .rr-error{ color: var(--error); font-size: 13px; }
+  #authView{ display:block; }
+  #appView{ display:none; }
+  #authSignin{ display:block; }
+  #authSignup{ display:none; }
 
-  .foot-note{
-    margin-top: 26px;
-    font-size: 12px;
-    color: var(--ink-soft);
-    line-height: 1.6;
+  .switch-link{ font-size:12.5px; color:var(--accent-deep); text-align:center; margin-top:12px; cursor:pointer; text-decoration:underline; }
+
+  .promptOut{
+    width:100%; min-height:180px; font-size:13px; line-height:1.6;
+    background:#FAF8F1; border:1px solid var(--line); border-radius:3px; padding:12px;
   }
+  .hint{ font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.6; }
+
+  .history-item{
+    border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px; margin-bottom: 10px; background:#fff;
+  }
+  .history-item .hi-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+  .history-item .hi-date{ font-size:11.5px; color:var(--ink-soft); }
+  .history-item .hi-input{ font-size:13.5px; line-height:1.5; margin-bottom:8px; }
+  .history-item .hi-actions{ display:flex; gap:8px; }
+  .mini-btn{
+    border:1px solid var(--line); background:#fff; color:var(--ink-soft); font-size:12px;
+    padding:5px 10px; border-radius:3px; cursor:pointer;
+  }
+  .mini-btn:hover{ border-color:var(--accent); color:var(--accent-deep); }
+  .mini-btn.danger:hover{ border-color:var(--error); color:var(--error); }
+  .empty-note{ font-size:13px; color:var(--ink-soft); text-align:center; padding:20px 0; }
+
+  .foot-note{ margin-top: 20px; font-size: 12px; color: var(--ink-soft); line-height: 1.7; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <div class="masthead">
-    <h1>상품 등록 문구 생성기</h1>
-    <p>대충 설명만 적으면 상품명, 해시태그, 소개글을 뽑아드려요. 한 개씩 또는 여러 개 한꺼번에 가능해요.</p>
-  </div>
-
-  <div class="mode-toggle">
-    <div class="mode-btn active" id="modeSingleBtn" onclick="setMode('single')">개별 입력</div>
-    <div class="mode-btn" id="modeBatchBtn" onclick="setMode('batch')">일괄 입력 (여러 개)</div>
-  </div>
-
-  <div class="tag-card">
-    <div class="punch"></div>
-
-    <div class="row">
-      <div style="flex:1">
-        <label for="category">카테고리</label>
-        <select id="category">
-          <option value="">선택 안 함</option>
-          <option value="패션/의류">패션/의류</option>
-          <option value="뷰티">뷰티</option>
-          <option value="식품">식품</option>
-          <option value="생활/잡화">생활/잡화</option>
-          <option value="전자기기">전자기기</option>
-          <option value="유아동">유아동</option>
-          <option value="반려동물">반려동물</option>
-          <option value="기타">기타</option>
-        </select>
-      </div>
-      <div style="flex:1">
-        <label for="tone">톤</label>
-        <select id="tone">
-          <option value="친근하고 신뢰감 있게">친근하게</option>
-          <option value="전문적이고 신뢰감 있게">전문적으로</option>
-          <option value="트렌디하고 감각적으로">트렌디하게</option>
-          <option value="가성비를 강조하며 실속있게">가성비 강조</option>
-        </select>
-      </div>
+    <div>
+      <h1>모모셀러</h1>
+      <p>로그인하면 만든 프롬프트가 내 계정에 저장돼요.</p>
     </div>
-
-    <div class="field-block">
-      <label for="brand">브랜드명 (없으면 비워두세요)</label>
-      <input type="text" id="brand" placeholder="예) JAJU" style="width:100%; font-family:inherit; font-size:14px; color:var(--ink); background:#fff; border:1px solid var(--line); border-radius:3px; padding:10px 12px;">
-      <div class="hint">일괄 입력 시 여기 적은 브랜드명이 모든 줄에 공통 적용돼요. 상품마다 브랜드가 다르면 각 줄 설명 안에 브랜드명을 직접 적어주세요.</div>
-    </div>
-
-    <div class="field-block" id="singleField">
-      <label for="input">상품 설명 (대충 적어도 돼요)</label>
-      <textarea id="input" placeholder="예) 겨울에 입는 두꺼운 기모 후드티, 남녀공용, 색은 검정 회색 베이지 3가지, 원단 도톰함"></textarea>
-    </div>
-
-    <div class="field-block" id="batchField" style="display:none;">
-      <div class="guide-box">
-        <strong>사용법</strong>
-        <ol>
-          <li>아래 칸에 상품 설명을 한 줄에 하나씩 적기 (최대 20개)</li>
-          <li>"생성하기" 누르면 순서대로 처리돼요 (개수가 많으면 시간이 좀 걸려요)</li>
-          <li>결과가 나오면 "엑셀용으로 전체 복사"를 눌러서 엑셀에 그대로 붙여넣기</li>
-        </ol>
-      </div>
-      <label for="batchInput">상품 설명 목록 (한 줄에 하나씩)</label>
-      <textarea id="batchInput" placeholder="한 줄에 상품 하나씩 대충 적어주세요&#10;예)&#10;겨울 기모 후드티 남녀공용 검정 회색 베이지&#10;캠핑용 접이식 의자 초경량 컬러 3종&#10;초보운전 안전운전 리무버블 자동차 스티커"></textarea>
-      <div class="hint">최대 20줄까지 한 번에 처리돼요. 처리에 시간이 좀 걸릴 수 있어요.</div>
-    </div>
-
-    <button class="generate" id="genBtn" onclick="generate()">생성하기</button>
-    <div class="status" id="status"></div>
-
-    <!-- 개별 결과 -->
-    <div class="receipt" id="receipt">
-      <div class="sec">
-        <div class="sec-head"><h2>상품명</h2></div>
-        <div id="names"></div>
-      </div>
-      <div class="sec">
-        <div class="sec-head">
-          <h2>스마트스토어 검색태그 (10개)</h2>
-          <button class="copy-all" onclick="copyTags('smartstore')">모두 복사</button>
-        </div>
-        <div class="tags" id="smartstoreTags"></div>
-      </div>
-      <div class="sec">
-        <div class="sec-head">
-          <h2>쿠팡 검색어 (20개)</h2>
-          <button class="copy-all" onclick="copyTags('coupang')">모두 복사</button>
-        </div>
-        <div class="tags" id="coupangTags"></div>
-      </div>
-      <div class="sec">
-        <div class="sec-head">
-          <h2>상품소개글</h2>
-          <button class="copy-all" onclick="copyDesc()">복사</button>
-        </div>
-        <div class="desc-box" id="desc"></div>
-      </div>
-    </div>
-
-    <!-- 일괄 결과 -->
-    <div class="table-wrap" id="tableWrap">
-      <div class="table-head">
-        <h2>결과 (<span id="rowCount">0</span>개)</h2>
-        <button class="copy-tsv" onclick="copyAllTsv()">엑셀용으로 전체 복사</button>
-      </div>
-      <div id="resultRows"></div>
+    <div class="user-chip" id="userChip" style="display:none;">
+      <span id="userEmail"></span>
+      <button onclick="signOut()">로그아웃</button>
     </div>
   </div>
 
-  <div class="foot-note">결과는 초안이에요. 실제 등록 전에 정확한 스펙(치수, 소재, 원산지 등)은 꼭 확인하고 붙여넣어 주세요. "엑셀용으로 전체 복사"를 누르면 엑셀에 붙여넣었을 때 상품명 / 해시태그 / 소개글이 각각 열로 나뉘어 들어가요.</div>
+  <!-- 로그인 화면 -->
+  <div id="authView">
+    <div class="card">
+      <div id="authSignin">
+        <h2>로그인</h2>
+        <div class="field-block">
+          <label for="siEmail">이메일</label>
+          <input type="email" id="siEmail" placeholder="you@example.com">
+        </div>
+        <div class="field-block">
+          <label for="siPassword">비밀번호</label>
+          <input type="password" id="siPassword" placeholder="비밀번호">
+        </div>
+        <button class="primary" onclick="signIn()">로그인</button>
+        <div class="status" id="siStatus"></div>
+        <div class="switch-link" onclick="showSignup()">계정이 없으신가요? 회원가입</div>
+      </div>
+
+      <div id="authSignup">
+        <h2>회원가입</h2>
+        <div class="field-block">
+          <label for="suEmail">이메일</label>
+          <input type="email" id="suEmail" placeholder="you@example.com">
+        </div>
+        <div class="field-block">
+          <label for="suPassword">비밀번호 (6자 이상)</label>
+          <input type="password" id="suPassword" placeholder="비밀번호">
+        </div>
+        <button class="primary" onclick="signUp()">회원가입</button>
+        <div class="status" id="suStatus"></div>
+        <div class="switch-link" onclick="showSignin()">이미 계정이 있으신가요? 로그인</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 로그인 후 화면 -->
+  <div id="appView">
+    <div class="tabs">
+      <div class="tab-btn active" id="tabGenBtn" onclick="setTab('gen')">프롬프트 만들기</div>
+      <div class="tab-btn" id="tabHistBtn" onclick="setTab('hist')">저장된 기록</div>
+    </div>
+
+    <div id="genTab">
+      <div class="card">
+        <h2>상품 정보</h2>
+        <div class="row" style="margin-bottom:14px;">
+          <div>
+            <label for="category">카테고리</label>
+            <select id="category">
+              <option value="">선택 안 함</option>
+              <option value="패션/의류">패션/의류</option>
+              <option value="뷰티">뷰티</option>
+              <option value="식품">식품</option>
+              <option value="생활/잡화">생활/잡화</option>
+              <option value="전자기기">전자기기</option>
+              <option value="유아동">유아동</option>
+              <option value="반려동물">반려동물</option>
+              <option value="기타">기타</option>
+            </select>
+          </div>
+          <div>
+            <label for="tone">톤</label>
+            <select id="tone">
+              <option value="친근하고 신뢰감 있게">친근하게</option>
+              <option value="전문적이고 신뢰감 있게">전문적으로</option>
+              <option value="트렌디하고 감각적으로">트렌디하게</option>
+              <option value="가성비를 강조하며 실속있게">가성비 강조</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-block">
+          <label for="brand">브랜드명 (없으면 비워두세요)</label>
+          <input type="text" id="brand" placeholder="예) JAJU">
+        </div>
+        <div class="field-block">
+          <label for="input">상품 설명 (대충 적어도 돼요)</label>
+          <textarea id="input" style="min-height:84px;" placeholder="예) 겨울에 입는 두꺼운 기모 후드티, 남녀공용, 색은 검정 회색 베이지 3가지, 원단 도톰함"></textarea>
+        </div>
+        <button class="primary" onclick="generatePrompt()">프롬프트 만들기</button>
+        <div class="status" id="genStatus"></div>
+      </div>
+
+      <div class="card" id="resultCard" style="display:none;">
+        <h2>Claude로 보낼 내용 (수정 가능)</h2>
+        <textarea class="promptOut" id="promptOut"></textarea>
+        <div class="hint">내용을 여기서 바로 고칠 수 있어요.</div>
+        <button class="primary" style="margin-top:10px;" onclick="copyPrompt()">복사하기</button>
+        <button class="secondary" onclick="openInClaude()">Claude에서 열기</button>
+        <button class="secondary" onclick="saveToHistory()">내 계정에 저장하기</button>
+        <div class="status" id="saveStatus"></div>
+      </div>
+    </div>
+
+    <div id="histTab" style="display:none;">
+      <div class="card">
+        <h2>저장된 기록</h2>
+        <div id="historyList"><div class="empty-note">불러오는 중...</div></div>
+      </div>
+    </div>
+
+    <div class="foot-note">저장된 기록은 로그인한 계정에만 보여요. 다른 사람과 공유되지 않아요.</div>
+  </div>
+
 </div>
 
 <script>
-let currentMode = 'single';
-let lastSmartstoreTags = [];
-let lastCoupangTags = [];
-let lastDesc = "";
-let batchResults = []; // {source, names, smartstoreTags, coupangTags, description, error}
+const SUPABASE_URL = 'https://aangpllxztgyoflioqai.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_ay-HMiHrtPqZpYEfzsXFAA_AOgVwOT_';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-function setMode(mode){
-  currentMode = mode;
-  document.getElementById('modeSingleBtn').classList.toggle('active', mode === 'single');
-  document.getElementById('modeBatchBtn').classList.toggle('active', mode === 'batch');
-  document.getElementById('singleField').style.display = mode === 'single' ? 'block' : 'none';
-  document.getElementById('batchField').style.display = mode === 'batch' ? 'block' : 'none';
-  document.getElementById('receipt').classList.remove('show');
-  document.getElementById('tableWrap').classList.remove('show');
-  document.getElementById('status').textContent = '';
+let currentUser = null;
+let currentTab = 'gen';
+
+async function init(){
+  const { data: { session } } = await sb.auth.getSession();
+  if(session){
+    onLoggedIn(session.user);
+  }
+  sb.auth.onAuthStateChange((event, session) => {
+    if(event === 'SIGNED_IN' && session){
+      onLoggedIn(session.user);
+    } else if(event === 'SIGNED_OUT'){
+      onLoggedOut();
+    }
+  });
+}
+init();
+
+function onLoggedIn(user){
+  currentUser = user;
+  document.getElementById('authView').style.display = 'none';
+  document.getElementById('appView').style.display = 'block';
+  document.getElementById('userChip').style.display = 'block';
+  document.getElementById('userEmail').textContent = user.email;
+  loadHistory();
 }
 
-function generate(){
-  if(currentMode === 'single'){
-    generateSingle();
+function onLoggedOut(){
+  currentUser = null;
+  document.getElementById('authView').style.display = 'block';
+  document.getElementById('appView').style.display = 'none';
+  document.getElementById('userChip').style.display = 'none';
+}
+
+function showSignup(){
+  document.getElementById('authSignin').style.display = 'none';
+  document.getElementById('authSignup').style.display = 'block';
+}
+function showSignin(){
+  document.getElementById('authSignup').style.display = 'none';
+  document.getElementById('authSignin').style.display = 'block';
+}
+
+async function signUp(){
+  const email = document.getElementById('suEmail').value.trim();
+  const password = document.getElementById('suPassword').value;
+  const statusEl = document.getElementById('suStatus');
+  if(!email || !password){
+    statusEl.textContent = '이메일과 비밀번호를 입력해주세요.';
+    statusEl.className = 'status err';
+    return;
+  }
+  statusEl.textContent = '가입 중...';
+  statusEl.className = 'status';
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if(error){
+    statusEl.textContent = error.message;
+    statusEl.className = 'status err';
+    return;
+  }
+  if(data.session){
+    statusEl.textContent = '';
+    onLoggedIn(data.user);
   } else {
-    generateBatch();
+    statusEl.textContent = '가입 완료! 이메일함에서 인증 링크를 확인해주세요.';
+    statusEl.className = 'status ok';
   }
 }
 
-async function callClaude(userMsg){
-  const sys = "너는 네이버 스마트스토어와 쿠팡 상품 등록을 동시에 돕는 카피라이터야. 사용자가 대충 설명한 상품 정보를 받아서 상품명 3개, 스마트스토어 검색태그 10개, 쿠팡 검색어 20개, 상품소개글 1개를 한 번에 만들어. " +
-    "[상품명 규칙] " +
-    "1) ★☆♥ 등 특수문자와 이모지를 쓰지 마. " +
-    "2) 같은 뜻의 단어를 반복하지 마(예: '원피스 ... 원피스', '이불커버 ... 이불세트'처럼 유의어 중복 금지). " +
-    "3) 특정 브랜드를 모방/암시하는 표현('OO스타일', '△△st', '이미테이션' 등)을 쓰지 마. " +
-    "4) 10대/20대/30대처럼 특정 연령대를 못박는 타겟 키워드를 쓰지 마. " +
-    "5) '신상품', '주문폭주', '특가', '할인', '무료배송', '이벤트' 같은 홍보성 키워드를 쓰지 마. " +
-    "6) 렌탈/해외/중고 여부는 기입하지 마. " +
-    "7) 구성은 [브랜드명(있으면) + 소재/특징 속성 + 카테고리명 + 사이즈(해당시) + 시즌성/용도(해당시)] 순서로 간결하게, 25자 내외로 3개를 서로 다른 각도(속성 강조/카테고리 강조/용도 강조)로 만들어. " +
-    "[스마트스토어 검색태그 규칙] 10개, # 기호 없이 순수 단어/구문으로, 상품명에 이미 쓴 단어·카테고리명·브랜드명과 겹치지 않는 새로운 검색 키워드(용도, 상황, 소재, 특징, 관련 검색어)로만 채워. '할인/무료배송/특가/이벤트' 같은 홍보 문구는 쓰지 마. " +
-    "[쿠팡 검색어 규칙] 20개, 스마트스토어 태그 10개와 최대한 겹치지 않게 다른 표현·동의어·연관 키워드까지 넓혀서 채워(쿠팡은 검색어 허용 폭이 더 넓음). 마찬가지로 상품명과 겹치지 않게 하고, 홍보 문구는 쓰지 마. " +
-    "[상품소개글] 3~5문장, 과장 없이 구체적인 특징 위주로, 줄바꿈 없이 한 문단으로 써. " +
-    "반드시 아래 JSON 형식으로만 응답해. 다른 텍스트나 코드블록 표시 없이 순수 JSON만: " +
-    '{"names": ["...", "...", "..."], "smartstoreTags": ["태그1", ...10개], "coupangTags": ["검색어1", ...20개], "description": "..."}';
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1000,
-      system: sys,
-      messages: [{ role: "user", content: userMsg }]
-    })
-  });
-
-  const data = await response.json();
-  const text = data.content.map(b => b.text || "").join("").trim();
-  const clean = text.replace(/```json|```/g, "").trim();
-  return JSON.parse(clean);
+async function signIn(){
+  const email = document.getElementById('siEmail').value.trim();
+  const password = document.getElementById('siPassword').value;
+  const statusEl = document.getElementById('siStatus');
+  if(!email || !password){
+    statusEl.textContent = '이메일과 비밀번호를 입력해주세요.';
+    statusEl.className = 'status err';
+    return;
+  }
+  statusEl.textContent = '로그인 중...';
+  statusEl.className = 'status';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){
+    statusEl.textContent = '로그인 실패: ' + error.message;
+    statusEl.className = 'status err';
+    return;
+  }
+  statusEl.textContent = '';
 }
 
-async function generateSingle(){
+async function signOut(){
+  await sb.auth.signOut();
+}
+
+function setTab(tab){
+  currentTab = tab;
+  document.getElementById('tabGenBtn').classList.toggle('active', tab === 'gen');
+  document.getElementById('tabHistBtn').classList.toggle('active', tab === 'hist');
+  document.getElementById('genTab').style.display = tab === 'gen' ? 'block' : 'none';
+  document.getElementById('histTab').style.display = tab === 'hist' ? 'block' : 'none';
+  if(tab === 'hist') loadHistory();
+}
+
+const RULES_TEXT = `[상품명 규칙]
+1) 특수문자(★☆♥ 등)와 이모지를 쓰지 않는다.
+2) 같은 뜻의 단어를 반복하지 않는다(예: '원피스 ... 원피스'처럼 유의어 중복 금지).
+3) 특정 브랜드를 모방/암시하는 표현('OO스타일', '이미테이션' 등)을 쓰지 않는다.
+4) 10대/20대/30대처럼 특정 연령대를 못박는 타겟 키워드를 쓰지 않는다.
+5) '신상품', '주문폭주', '특가', '할인', '무료배송', '이벤트' 같은 홍보성 키워드를 쓰지 않는다.
+6) 렌탈/해외/중고 여부는 기입하지 않는다.
+7) 구성은 [브랜드명(있으면) + 소재/특징 속성 + 카테고리명 + 사이즈(해당시) + 시즌성/용도(해당시)] 순서로 간결하게, 25자 내외로 3개를 서로 다른 각도(속성 강조/카테고리 강조/용도 강조)로 만든다.
+
+[스마트스토어 검색태그 규칙]
+10개, # 기호 없이 순수 단어/구문으로, 상품명에 이미 쓴 단어·카테고리명·브랜드명과 겹치지 않는 새로운 검색 키워드(용도, 상황, 소재, 특징, 관련 검색어)로만 채운다. '할인/무료배송/특가/이벤트' 같은 홍보 문구는 쓰지 않는다.
+
+[쿠팡 검색어 규칙]
+20개, 스마트스토어 태그 10개와 최대한 겹치지 않게 다른 표현·동의어·연관 키워드까지 넓혀서 채운다(쿠팡은 검색어 허용 폭이 더 넓음). 마찬가지로 상품명과 겹치지 않게 하고, 홍보 문구는 쓰지 않는다.
+
+[상품소개글]
+3~5문장, 과장 없이 구체적인 특징 위주로, 한 문단으로 쓴다.`;
+
+function buildPrompt(input, category, tone, brand){
+  return `너는 네이버 스마트스토어와 쿠팡 상품 등록을 동시에 돕는 카피라이터야. 아래 상품 정보로 상품명 3개, 스마트스토어 검색태그 10개, 쿠팡 검색어 20개, 상품소개글 1개를 만들어줘.
+
+${RULES_TEXT}
+
+[상품 정보]
+브랜드명: ${brand || "없음"}
+카테고리: ${category || "미지정"}
+원하는 톤: ${tone}
+상품 설명: ${input}
+
+아래 형식 그대로 보기 좋게 정리해서 답변해줘:
+
+상품명
+1)
+2)
+3)
+
+스마트스토어 검색태그 (쉼표로 구분)
+
+쿠팡 검색어 (쉼표로 구분)
+
+상품소개글
+`;
+}
+
+let lastInput = { input:'', category:'', tone:'', brand:'', prompt:'' };
+
+function generatePrompt(){
   const input = document.getElementById('input').value.trim();
   const category = document.getElementById('category').value;
   const tone = document.getElementById('tone').value;
   const brand = document.getElementById('brand').value.trim();
-  const statusEl = document.getElementById('status');
-  const btn = document.getElementById('genBtn');
-  const receipt = document.getElementById('receipt');
+  const statusEl = document.getElementById('genStatus');
 
   if(!input){
-    statusEl.textContent = "상품 설명을 먼저 적어주세요.";
-    statusEl.className = "status err";
+    statusEl.textContent = '상품 설명을 먼저 적어주세요.';
+    statusEl.className = 'status err';
     return;
   }
 
-  btn.disabled = true;
-  statusEl.className = "status";
-  statusEl.textContent = "생성 중...";
-  receipt.classList.remove('show');
+  const prompt = buildPrompt(input, category, tone, brand);
+  document.getElementById('promptOut').value = prompt;
+  document.getElementById('resultCard').style.display = 'block';
+  document.getElementById('saveStatus').textContent = '';
+  statusEl.textContent = '';
 
-  const userMsg = `브랜드명: ${brand || "없음"}\n카테고리: ${category || "미지정"}\n원하는 톤: ${tone}\n상품 설명: ${input}`;
+  lastInput = { input, category, tone, brand, prompt };
+}
 
-  try{
-    const parsed = await callClaude(userMsg);
-    renderSingleResult(parsed);
-    statusEl.textContent = "";
-  } catch(err){
-    console.error(err);
-    statusEl.textContent = "생성에 실패했어요. 다시 시도해주세요.";
-    statusEl.className = "status err";
-  } finally {
-    btn.disabled = false;
+function copyText(text){
+  navigator.clipboard.writeText(text);
+}
+
+function copyPrompt(){
+  copyText(document.getElementById('promptOut').value);
+  const statusEl = document.getElementById('saveStatus');
+  statusEl.textContent = '복사됐어요.';
+  statusEl.className = 'status ok';
+}
+
+function openInClaude(){
+  const text = document.getElementById('promptOut').value;
+  copyText(text);
+  window.open('https://claude.ai/new?q=' + encodeURIComponent(text), '_blank');
+}
+
+async function saveToHistory(){
+  if(!currentUser) return;
+  const statusEl = document.getElementById('saveStatus');
+  const promptText = document.getElementById('promptOut').value;
+  statusEl.textContent = '저장 중...';
+  statusEl.className = 'status';
+
+  const { error } = await sb.from('product_prompts').insert({
+    user_id: currentUser.id,
+    input_text: lastInput.input,
+    category: lastInput.category,
+    tone: lastInput.tone,
+    brand: lastInput.brand,
+    prompt_text: promptText
+  });
+
+  if(error){
+    statusEl.textContent = '저장 실패: ' + error.message;
+    statusEl.className = 'status err';
+    return;
   }
+  statusEl.textContent = '저장됐어요.';
+  statusEl.className = 'status ok';
 }
 
-function renderSingleResult(parsed){
-  const namesEl = document.getElementById('names');
-  namesEl.innerHTML = "";
-  (parsed.names || []).forEach((name) => {
-    const row = document.createElement('div');
-    row.className = 'name-item';
-    row.innerHTML = `<span class="name-text">${escapeHtml(name)}</span>`;
-    const btn = document.createElement('button');
-    btn.className = 'copy-btn';
-    btn.textContent = '복사';
-    btn.onclick = () => copyText(name, btn);
-    row.appendChild(btn);
-    namesEl.appendChild(row);
-  });
+async function loadHistory(){
+  if(!currentUser) return;
+  const listEl = document.getElementById('historyList');
+  listEl.innerHTML = '<div class="empty-note">불러오는 중...</div>';
 
-  lastSmartstoreTags = parsed.smartstoreTags || [];
-  lastCoupangTags = parsed.coupangTags || [];
-  renderTagChips('smartstoreTags', lastSmartstoreTags);
-  renderTagChips('coupangTags', lastCoupangTags);
+  const { data, error } = await sb
+    .from('product_prompts')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(50);
 
-  lastDesc = parsed.description || "";
-  document.getElementById('desc').textContent = lastDesc;
-  document.getElementById('receipt').classList.add('show');
-}
-
-function renderTagChips(elId, tags){
-  const el = document.getElementById(elId);
-  el.innerHTML = "";
-  tags.forEach(tag => {
-    const span = document.createElement('span');
-    span.className = 'tag';
-    span.textContent = tag;
-    el.appendChild(span);
-  });
-}
-
-async function generateBatch(){
-  const raw = document.getElementById('batchInput').value;
-  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0).slice(0, 20);
-  const category = document.getElementById('category').value;
-  const tone = document.getElementById('tone').value;
-  const brand = document.getElementById('brand').value.trim();
-  const statusEl = document.getElementById('status');
-  const btn = document.getElementById('genBtn');
-  const tableWrap = document.getElementById('tableWrap');
-  const resultRowsEl = document.getElementById('resultRows');
-
-  if(lines.length === 0){
-    statusEl.textContent = "상품 설명을 한 줄에 하나씩 적어주세요.";
-    statusEl.className = "status err";
+  if(error){
+    listEl.innerHTML = `<div class="empty-note">불러오기 실패: ${escapeHtml(error.message)}</div>`;
     return;
   }
 
-  btn.disabled = true;
-  statusEl.className = "status";
-  resultRowsEl.innerHTML = "";
-  batchResults = lines.map(l => ({ source: l, names: null, smartstoreTags: null, coupangTags: null, description: null, error: null }));
-  document.getElementById('rowCount').textContent = lines.length;
-  tableWrap.classList.add('show');
-  renderBatchRows();
-
-  for(let i = 0; i < lines.length; i++){
-    statusEl.textContent = `처리 중... (${i + 1}/${lines.length})`;
-    const userMsg = `브랜드명: ${brand || "없음"}\n카테고리: ${category || "미지정"}\n원하는 톤: ${tone}\n상품 설명: ${lines[i]}`;
-    try{
-      const parsed = await callClaude(userMsg);
-      batchResults[i].names = parsed.names || [];
-      batchResults[i].smartstoreTags = parsed.smartstoreTags || [];
-      batchResults[i].coupangTags = parsed.coupangTags || [];
-      batchResults[i].description = parsed.description || "";
-    } catch(err){
-      console.error(err);
-      batchResults[i].error = "생성 실패";
-    }
-    renderBatchRows();
+  if(!data || data.length === 0){
+    listEl.innerHTML = '<div class="empty-note">아직 저장된 기록이 없어요.</div>';
+    return;
   }
 
-  statusEl.textContent = `완료 (${lines.length}개)`;
-  btn.disabled = false;
-}
-
-function renderBatchRows(){
-  const resultRowsEl = document.getElementById('resultRows');
-  resultRowsEl.innerHTML = "";
-  batchResults.forEach((r, idx) => {
+  listEl.innerHTML = '';
+  data.forEach(row => {
     const div = document.createElement('div');
-    div.className = 'result-row';
-    let body = `<div class="rr-src">${idx + 1}. ${escapeHtml(r.source)}</div>`;
-    if(r.error){
-      body += `<div class="rr-error">${r.error}</div>`;
-    } else if(r.names === null){
-      body += `<div class="rr-pending">처리 대기 중...</div>`;
-    } else {
-      body += `<div class="rr-field"><span class="rr-label">상품명</span>${escapeHtml(r.names.join(' / '))}</div>`;
-      body += `<div class="rr-field"><span class="rr-label">스마트스토어 태그</span>${escapeHtml(r.smartstoreTags.join(', '))}</div>`;
-      body += `<div class="rr-field"><span class="rr-label">쿠팡 검색어</span>${escapeHtml(r.coupangTags.join(', '))}</div>`;
-      body += `<div class="rr-field"><span class="rr-label">소개글</span>${escapeHtml(r.description)}</div>`;
-    }
-    div.innerHTML = body;
-    resultRowsEl.appendChild(div);
+    div.className = 'history-item';
+    const date = new Date(row.created_at);
+    const dateStr = `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,'0')}.${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+    div.innerHTML = `
+      <div class="hi-top">
+        <span class="hi-date">${dateStr}</span>
+      </div>
+      <div class="hi-input">${escapeHtml(row.input_text)}</div>
+      <div class="hi-actions">
+        <button class="mini-btn" onclick="viewHistoryItem('${row.id}')">불러오기</button>
+        <button class="mini-btn danger" onclick="deleteHistoryItem('${row.id}')">삭제</button>
+      </div>
+    `;
+    listEl.appendChild(div);
   });
+
+  window._historyCache = data;
 }
 
-function copyAllTsv(){
-  const header = "상품 설명\t상품명(3안)\t스마트스토어 태그\t쿠팡 검색어\t상품소개글";
-  const rows = batchResults.map(r => {
-    if(r.error || r.names === null) return `${r.source}\t\t\t\t`;
-    const names = r.names.join(' / ').replace(/\t/g, ' ');
-    const smartTags = r.smartstoreTags.join(', ').replace(/\t/g, ' ');
-    const coupangTags = r.coupangTags.join(', ').replace(/\t/g, ' ');
-    const desc = r.description.replace(/\t/g, ' ').replace(/\n/g, ' ');
-    return `${r.source}\t${names}\t${smartTags}\t${coupangTags}\t${desc}`;
-  });
-  const tsv = [header, ...rows].join('\n');
-  copyText(tsv);
-  const statusEl = document.getElementById('status');
-  statusEl.textContent = "엑셀에 붙여넣기 할 수 있게 복사됐어요.";
-  statusEl.className = "status";
+function viewHistoryItem(id){
+  const row = (window._historyCache || []).find(r => r.id === id);
+  if(!row) return;
+  document.getElementById('input').value = row.input_text || '';
+  document.getElementById('category').value = row.category || '';
+  document.getElementById('tone').value = row.tone || '친근하고 신뢰감 있게';
+  document.getElementById('brand').value = row.brand || '';
+  document.getElementById('promptOut').value = row.prompt_text || '';
+  document.getElementById('resultCard').style.display = 'block';
+  setTab('gen');
 }
 
-function copyText(text, btnEl){
-  navigator.clipboard.writeText(text).then(() => {
-    if(btnEl){
-      const original = btnEl.textContent;
-      btnEl.textContent = '복사됨';
-      btnEl.classList.add('done');
-      setTimeout(() => { btnEl.textContent = original; btnEl.classList.remove('done'); }, 1200);
-    }
-  });
+async function deleteHistoryItem(id){
+  const { error } = await sb.from('product_prompts').delete().eq('id', id);
+  if(!error){
+    loadHistory();
+  }
 }
-
-function copyTags(which){ copyText((which === 'coupang' ? lastCoupangTags : lastSmartstoreTags).join(', ')); }
-function copyDesc(){ copyText(lastDesc); }
 
 function escapeHtml(str){
   const div = document.createElement('div');
