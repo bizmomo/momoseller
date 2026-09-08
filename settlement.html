@@ -69,7 +69,26 @@
         <input type="number" id="coupangShipRate" value="3" step="0.1">
       </div>
     </div>
-    <div class="hint">카테고리를 고르면 판매수수료가 자동으로 채워져요. 목록에 없는 카테고리면 "직접 입력"으로 두고 쿠팡윙 → 정산관리에서 확인한 요율을 직접 넣어주세요. 배송비 수수료는 여기 입력한 값에 VAT 10%가 자동으로 더해져요. 스마트스토어는 실제 수수료 데이터를 그대로 가져오기 때문에 별도 입력이 필요 없어요.</div>
+    <div class="hint">카테고리를 고르면 판매수수료가 자동으로 채워져요. 목록에 없는 카테고리면 "직접 입력"으로 두고 쿠팡윙 → 정산관리에서 확인한 요율을 직접 넣어주세요. 배송비 수수료는 여기 입력한 값에 VAT 10%가 자동으로 더해져요.</div>
+  </div>
+
+  <div class="card">
+    <h2>4. 스마트스토어 수수료율 설정</h2>
+    <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink); margin-bottom:14px; cursor:pointer;">
+      <input type="checkbox" id="storeOverride" onchange="toggleStoreOverride()" style="width:auto; cursor:pointer;">
+      실제 파일 값 대신 아래 비율로 직접 계산하기
+    </label>
+    <div class="row">
+      <div style="flex:1">
+        <label for="storeRate">판매수수료 (%)</label>
+        <input type="number" id="storeRate" placeholder="예) 5.63" step="0.01" disabled>
+      </div>
+      <div style="flex:1">
+        <label for="storeShipRate">배송비 수수료 (%)</label>
+        <input type="number" id="storeShipRate" placeholder="예) 3.63" step="0.01" disabled>
+      </div>
+    </div>
+    <div class="hint">기본값은 엑셀 파일 안의 실제 수수료 값을 그대로 써요 (가장 정확해요). 체크박스를 켜면 쿠팡처럼 입력한 비율로 직접 계산해요 — 정산 내역서에서 확인한 최종 비율을 그대로 넣어주세요.</div>
   </div>
 
   <button class="primary" id="genBtn" onclick="processFiles()">정산 파일 만들기</button>
@@ -82,7 +101,7 @@
 
   <div class="foot-note">
     실배송비(택배비) 열은 마켓 데이터에 없는 정보라 빈 칸으로 나가요 — 다운로드한 파일에서 직접 채워주시면 순수익이 자동으로 계산돼요.<br>
-    스마트스토어 수수료 열은 원본 파일의 "네이버페이 주문관리 수수료"·"매출연동 수수료" 값을 그대로 사용해요.
+    스마트스토어 수수료 열은 기본적으로 원본 파일의 "네이버페이 주문관리 수수료"·"매출연동 수수료" 값을 그대로 사용하고, 위에서 비율 직접 계산을 켰다면 그 비율로 계산해요.
   </div>
 </div>
 
@@ -108,6 +127,12 @@ function applyCategoryRate(){
   if(sel.value !== ''){
     document.getElementById('coupangRate').value = sel.value;
   }
+}
+
+function toggleStoreOverride(){
+  const on = document.getElementById('storeOverride').checked;
+  document.getElementById('storeRate').disabled = !on;
+  document.getElementById('storeShipRate').disabled = !on;
 }
 
 function setStatus(el, text, cls){
@@ -288,10 +313,13 @@ function downloadResult(){
 
   const coupangRate = Number(document.getElementById('coupangRate').value) || 0;
   const coupangShipRate = Number(document.getElementById('coupangShipRate').value) || 0;
+  const storeOverrideOn = document.getElementById('storeOverride').checked;
+  const storeRate = Number(document.getElementById('storeRate').value) || 0;
+  const storeShipRate = Number(document.getElementById('storeShipRate').value) || 0;
 
   const header = ['주문서 작성일', '물품명', '오픈마켓 사이트', '오픈마켓 물품판매금액', '오픈마켓 배송료', '총 매출액(공급가액)', '실배송비(직접입력)', '판매처수수료', '배송료수수료', '정산,지급완료', '순수익(VAT 제외)'];
   const aoa = [
-    ['쿠팡 판매수수료율(%)', coupangRate, '쿠팡 배송비수수료율(%, VAT별도)', coupangShipRate],
+    ['쿠팡 판매수수료율(%)', coupangRate, '쿠팡 배송비수수료율(%, VAT별도)', coupangShipRate, '스마트스토어 판매수수료율(%)', storeRate, '스마트스토어 배송비수수료율(%)', storeShipRate],
     [],
     header
   ];
@@ -312,6 +340,9 @@ function downloadResult(){
     if(r.site === '쿠팡'){
       ws[H] = { t: 'n', f: `-(${D}*$B$1/100)*1.1` };
       ws[I] = { t: 'n', f: `-(${E}*$D$1/100)*1.1` };
+    } else if(storeOverrideOn){
+      ws[H] = { t: 'n', f: `-(${D}*$F$1/100)` };
+      ws[I] = { t: 'n', f: `-(${E}*$H$1/100)` };
     } else {
       ws[H] = { t: 'n', v: r.actualFee1 !== null ? r.actualFee1 : 0 };
       ws[I] = { t: 'n', v: r.actualFee2 !== null ? r.actualFee2 : 0 };
