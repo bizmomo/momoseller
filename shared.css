@@ -96,23 +96,6 @@ button.secondary:hover{ border-color: var(--accent); color: var(--accent-deep); 
 }
 .hint{ font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.6; }
 
-.upload-box{
-  border: 1px dashed var(--line);
-  border-radius: 4px;
-  padding: 16px;
-  text-align: center;
-  background: #FAF8F1;
-  margin-bottom: 10px;
-}
-.upload-box input[type=file]{ font-size: 13px; width: 100%; }
-.file-status{ font-size: 12.5px; color: var(--teal); margin-top: 6px; min-height: 16px; }
-.file-status.err{ color: var(--error); }
-
-.result-box{ display:none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line); }
-.result-box.show{ display:block; }
-.result-summary{ font-size: 13.5px; line-height: 1.8; margin-bottom: 12px; }
-.result-summary b{ color: var(--ink); }
-
 .history-item{
   border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px; margin-bottom: 10px; background:#fff;
 }
