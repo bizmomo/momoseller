@@ -451,6 +451,68 @@ async function generateWithAI(){
   updateAiGenControls();
 }
 
+function parseAiResult(text){
+  const headerDefs = [
+    { key: 'name', re: /^상품명\s*$/m },
+    { key: 'smartstore', re: /^스마트스토어\s*검색태그[^\n]*$/m },
+    { key: 'coupang', re: /^쿠팡\s*검색어[^\n]*$/m },
+    { key: 'desc', re: /^상품소개글\s*$/m },
+  ];
+
+  const found = [];
+  headerDefs.forEach(def => {
+    const m = def.re.exec(text);
+    if(m) found.push({ key: def.key, start: m.index, headerEnd: m.index + m[0].length });
+  });
+  found.sort((a, b) => a.start - b.start);
+
+  const sections = {};
+  found.forEach((f, i) => {
+    const end = i + 1 < found.length ? found[i + 1].start : text.length;
+    sections[f.key] = text.slice(f.headerEnd, end).trim();
+  });
+
+  const names = sections.name
+    ? Array.from(sections.name.matchAll(/^\s*\d+\)\s*(.+)$/gm)).map(m => m[1].trim())
+    : [];
+
+  return {
+    names,
+    smartstore: sections.smartstore ? sections.smartstore.replace(/\s*\n\s*/g, ' ').trim() : '',
+    coupang: sections.coupang ? sections.coupang.replace(/\s*\n\s*/g, ' ').trim() : '',
+    desc: sections.desc || '',
+  };
+}
+
+function buildCopyField(labelText, value, tag){
+  const block = document.createElement('div');
+  block.className = 'field-block';
+
+  const label = document.createElement('label');
+  label.textContent = labelText;
+  block.appendChild(label);
+
+  const field = document.createElement(tag);
+  if(tag === 'input') field.type = 'text';
+  else field.style.minHeight = '80px';
+  field.value = value;
+  block.appendChild(field);
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'mini-btn';
+  copyBtn.style.marginTop = '6px';
+  copyBtn.textContent = '복사하기';
+  copyBtn.onclick = function(){
+    copyText(field.value);
+    copyBtn.textContent = '복사됐어요!';
+    setTimeout(() => { copyBtn.textContent = '복사하기'; }, 1500);
+  };
+  block.appendChild(copyBtn);
+
+  return block;
+}
+
 function renderAiResult(text, index, total, meta){
   const container = document.getElementById('aiResultsContainer');
   const block = document.createElement('div');
@@ -480,6 +542,32 @@ function renderAiResult(text, index, total, meta){
     setTimeout(() => { copyBtn.textContent = '복사하기'; }, 1500);
   };
   block.appendChild(copyBtn);
+
+  const parsed = parseAiResult(text);
+  if(parsed.names.length || parsed.smartstore || parsed.coupang || parsed.desc){
+    const splitWrap = document.createElement('div');
+    splitWrap.style.cssText = 'margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);';
+
+    const splitHint = document.createElement('div');
+    splitHint.className = 'hint';
+    splitHint.style.marginTop = '0';
+    splitHint.textContent = '항목별로 나눠서 수정하고 따로 복사할 수 있어요';
+    splitWrap.appendChild(splitHint);
+
+    parsed.names.forEach((name, i) => {
+      splitWrap.appendChild(buildCopyField(`상품명 ${i + 1}`, name, 'input'));
+    });
+    if(parsed.smartstore){
+      splitWrap.appendChild(buildCopyField('스마트스토어 검색태그', parsed.smartstore, 'textarea'));
+    }
+    if(parsed.coupang){
+      splitWrap.appendChild(buildCopyField('쿠팡 검색어', parsed.coupang, 'textarea'));
+    }
+    if(parsed.desc){
+      splitWrap.appendChild(buildCopyField('상품소개글', parsed.desc, 'textarea'));
+    }
+    block.appendChild(splitWrap);
+  }
 
   const saveBtn = document.createElement('button');
   saveBtn.className = 'secondary';
