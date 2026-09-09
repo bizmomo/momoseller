@@ -352,6 +352,7 @@ function normalizeHeader(h){
 
 const COUPANG_MARKERS = ['묶음배송번호', '옵션판매가(판매단가)', '옵션판매가', '배송유형', '노출상품id', '옵션id'].map(normalizeHeader);
 const STORE_MARKERS = ['네이버페이주문관리수수료', '매출연동수수료', '정산예정금액', '상품주문번호', '정산기준금액(A)', 'Npay 수수료(B)'].map(normalizeHeader);
+const SHIPPING_LABELS = ['기본배송비', '배송비', '추가배송비', '도서산간배송비', '도서산간 추가배송비'];
 
 function detectPlatform(headerRow){
   const normed = new Set(headerRow.map(normalizeHeader));
@@ -492,6 +493,19 @@ function parsePlatformRows(aoa, platform, settings, fileName){
         otherPlatformFee = 0;
         hasActualSettlement = false;
         settlementAmount = grossSales - marketplaceFee - shippingFee - otherPlatformFee;
+      }
+
+      // Naver's per-order settlement export lists shipping as its own
+      // pseudo-product line (상품명 "기본배송비" etc.) right after the real
+      // product, rather than as a shipping-amount column - fold it into the
+      // product line right above it instead of treating it as its own order.
+      if(SHIPPING_LABELS.includes(String(name).trim()) && rows.length > 0){
+        const parent = rows[rows.length - 1];
+        parent.shippingAmount += productAmount;
+        parent.shippingFee += marketplaceFee + otherPlatformFee;
+        parent.grossSales = parent.productAmount + parent.shippingAmount;
+        parent.settlementAmount += settlementAmount;
+        continue;
       }
 
       rows.push({
