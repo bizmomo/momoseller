@@ -52,9 +52,6 @@
   .product-row .pnums .main{ font-size:13.5px; font-weight:700; }
   .product-row .pnums .sub{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
   .product-row .pnums .sub.warn{ color:var(--error); }
-  .order-item{ border-bottom:1px solid var(--line); }
-  .order-item:last-child{ border-bottom:none; }
-  .order-item .product-row{ border-bottom:none; }
 </style>
 </head>
 <body>
@@ -73,19 +70,18 @@
 
   <div class="tab-row">
     <button class="tab-btn active" data-tab="report" onclick="setMainTab('report')">리포트</button>
-    <button class="tab-btn" data-tab="orders" onclick="setMainTab('orders')">주문 목록</button>
     <button class="tab-btn" data-tab="period" onclick="setMainTab('period')">기간별</button>
   </div>
 
-  <div class="card" id="monthNavCard">
-    <div class="month-nav">
-      <button class="icon-btn" onclick="changeMonth(-1)" aria-label="이전 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
-      <div class="month-label" id="monthLabel">-</div>
-      <button class="icon-btn" onclick="changeMonth(1)" aria-label="다음 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
-    </div>
-  </div>
-
   <div id="reportTab">
+    <div class="card">
+      <div class="month-nav">
+        <button class="icon-btn" onclick="changeMonth(-1)" aria-label="이전 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+        <div class="month-label" id="monthLabel">-</div>
+        <button class="icon-btn" onclick="changeMonth(1)" aria-label="다음 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      </div>
+    </div>
+
     <div class="card" id="summaryCard">
       <div class="summary-big">
         <div class="label">매출</div>
@@ -150,19 +146,6 @@
     </div>
   </div>
 
-  <div id="ordersTab" style="display:none;">
-    <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-        <h2 style="margin:0;">주문 목록</h2>
-        <button class="mini-btn" id="addOrderBtn" onclick="toggleOrderForm()">+ 직접 입력</button>
-      </div>
-      <div class="hint" style="margin-top:0; margin-bottom:12px;">이 달에 저장된 주문이에요. 눌러서 수정하거나 삭제할 수 있어요.</div>
-      <div id="orderFormWrap" style="display:none; margin-bottom:18px; padding-bottom:18px; border-bottom:1px dashed var(--line);"></div>
-      <div id="orderListWrap"></div>
-      <div class="hint" id="orderListEmptyNote" style="display:none; text-align:center;">이 달에는 저장된 주문이 없어요.</div>
-    </div>
-  </div>
-
   <div id="periodTab" style="display:none;">
     <div class="card">
       <div class="tab-row">
@@ -205,14 +188,11 @@
 <script>
 let currentUser = null;
 let viewYear, viewMonth;
-let activeMainTab = 'report';
 let periodMonths = 6;
 let customRange = null;
 let periodData = [];
-let addOrderFields = null;
 
 const PLATFORM_LABELS = { coupang: '쿠팡', smartstore: '스마트스토어', manual: '직접입력' };
-const ORDER_DRAFT_KEY = 'momoseller_order_draft';
 
 requireAuth(function(user){
   currentUser = user;
@@ -260,22 +240,17 @@ function aggregate(orders){
 }
 
 function setMainTab(tab){
-  activeMainTab = tab;
   document.querySelectorAll('.tab-row .tab-btn[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  document.getElementById('monthNavCard').style.display = (tab === 'report' || tab === 'orders') ? 'block' : 'none';
   document.getElementById('reportTab').style.display = tab === 'report' ? 'block' : 'none';
-  document.getElementById('ordersTab').style.display = tab === 'orders' ? 'block' : 'none';
   document.getElementById('periodTab').style.display = tab === 'period' ? 'block' : 'none';
   if(tab === 'period') loadPeriodData();
-  if(tab === 'orders') renderOrdersTab();
 }
 
 function changeMonth(delta){
   viewMonth += delta;
   if(viewMonth > 12){ viewMonth = 1; viewYear++; }
   if(viewMonth < 1){ viewMonth = 12; viewYear--; }
-  if(activeMainTab === 'orders') renderOrdersTab();
-  else renderReportTab();
+  renderReportTab();
 }
 
 async function renderReportTab(){
@@ -505,340 +480,6 @@ function renderPeriodChart(){
       </div>
     `;
   }).join('');
-}
-
-async function renderOrdersTab(){
-  document.getElementById('monthLabel').textContent = `${viewYear}년 ${viewMonth}월`;
-
-  const { start, end } = monthRangeISO(viewYear, viewMonth);
-  const orders = await fetchOrdersInRange(start, end);
-  orders.sort((a, b) => b.order_date.localeCompare(a.order_date));
-  window._ordersCache = orders;
-
-  document.getElementById('orderListEmptyNote').style.display = orders.length === 0 ? 'block' : 'none';
-  document.getElementById('orderListWrap').innerHTML = orders.map(o => `
-    <div class="order-item">
-      <div class="product-row" id="orderSummary-${o.id}" style="cursor:pointer;" onclick="toggleOrderEdit('${o.id}')">
-        ${orderSummaryHtml(o)}
-      </div>
-      <div id="orderEdit-${o.id}" style="display:none; padding-bottom:16px;"></div>
-    </div>
-  `).join('');
-}
-
-function orderSummaryHtml(o){
-  return `
-    <div class="pname">${escapeHtml(o.product_name)}${o.option_name ? ' · ' + escapeHtml(o.option_name) : ''}</div>
-    <div class="pnums">
-      <div class="main">${formatWon(o.gross_sales)}</div>
-      <div class="sub">${escapeHtml(o.order_date.slice(5))} · ${escapeHtml(PLATFORM_LABELS[o.platform] || o.platform)} · 순이익 ${formatWon(o.net_profit)}</div>
-    </div>
-  `;
-}
-
-function buildLabeledInput(labelText, inputEl){
-  const div = document.createElement('div');
-  const label = document.createElement('label');
-  label.textContent = labelText;
-  div.appendChild(label);
-  div.appendChild(inputEl);
-  return div;
-}
-
-function buildOrderFormFields(order){
-  const o = order || {};
-
-  const platformSel = document.createElement('select');
-  [['coupang', '쿠팡'], ['smartstore', '스마트스토어'], ['manual', '직접입력(기타)']].forEach(([val, label]) => {
-    const opt = document.createElement('option');
-    opt.value = val;
-    opt.textContent = label;
-    platformSel.appendChild(opt);
-  });
-  platformSel.value = o.platform || 'manual';
-
-  const dateInput = document.createElement('input');
-  dateInput.type = 'date';
-  dateInput.value = o.order_date || new Date().toISOString().slice(0, 10);
-
-  const productNameInput = document.createElement('input');
-  productNameInput.type = 'text';
-  productNameInput.placeholder = '예) 겨울 기모 후드티';
-  productNameInput.value = o.product_name || '';
-
-  const optionNameInput = document.createElement('input');
-  optionNameInput.type = 'text';
-  optionNameInput.placeholder = '예) 블랙 / L (선택)';
-  optionNameInput.value = o.option_name || '';
-
-  const quantityInput = document.createElement('input');
-  quantityInput.type = 'number';
-  quantityInput.min = '1';
-  quantityInput.value = o.quantity || 1;
-
-  const grossInput = document.createElement('input');
-  grossInput.type = 'number';
-  grossInput.min = '0';
-  grossInput.placeholder = '0';
-  grossInput.value = o.gross_sales != null ? o.gross_sales : '';
-
-  const feeInput = document.createElement('input');
-  feeInput.type = 'number';
-  feeInput.min = '0';
-  feeInput.placeholder = '0';
-  feeInput.value = o.marketplace_fee != null ? o.marketplace_fee : 0;
-
-  const costInput = document.createElement('input');
-  costInput.type = 'number';
-  costInput.min = '0';
-  costInput.placeholder = '0';
-  costInput.value = o.product_cost != null ? o.product_cost : 0;
-
-  const wrap = document.createElement('div');
-
-  const row1 = document.createElement('div');
-  row1.className = 'row';
-  row1.style.marginBottom = '14px';
-  row1.appendChild(buildLabeledInput('판매처', platformSel));
-  row1.appendChild(buildLabeledInput('주문일', dateInput));
-  wrap.appendChild(row1);
-
-  const nameBlock = buildLabeledInput('상품명', productNameInput);
-  nameBlock.className = 'field-block';
-  wrap.appendChild(nameBlock);
-
-  const optionBlock = buildLabeledInput('옵션명 (선택)', optionNameInput);
-  optionBlock.className = 'field-block';
-  wrap.appendChild(optionBlock);
-
-  const row2 = document.createElement('div');
-  row2.className = 'row';
-  row2.style.marginBottom = '14px';
-  row2.appendChild(buildLabeledInput('수량', quantityInput));
-  row2.appendChild(buildLabeledInput('매출액 (원)', grossInput));
-  wrap.appendChild(row2);
-
-  const row3 = document.createElement('div');
-  row3.className = 'row';
-  row3.style.marginBottom = '14px';
-  row3.appendChild(buildLabeledInput('수수료 (원)', feeInput));
-  row3.appendChild(buildLabeledInput('원가 (원)', costInput));
-  wrap.appendChild(row3);
-
-  return {
-    wrap,
-    fields: { platformSel, dateInput, productNameInput, optionNameInput, quantityInput, grossInput, feeInput, costInput },
-  };
-}
-
-function validateOrderFields(fields){
-  const productName = fields.productNameInput.value.trim();
-  const gross = Number(fields.grossInput.value);
-  if(!productName) return '상품명을 입력해주세요.';
-  if(!fields.dateInput.value) return '주문일을 선택해주세요.';
-  if(fields.grossInput.value === '' || isNaN(gross) || gross < 0) return '매출액을 입력해주세요.';
-  return null;
-}
-
-function readOrderFields(fields){
-  const grossSales = Number(fields.grossInput.value) || 0;
-  const fee = Number(fields.feeInput.value) || 0;
-  const cost = Number(fields.costInput.value) || 0;
-  const settlementAmount = grossSales - fee;
-  const netProfit = settlementAmount - cost;
-  return {
-    platform: fields.platformSel.value,
-    order_date: fields.dateInput.value,
-    product_name: fields.productNameInput.value.trim(),
-    option_name: fields.optionNameInput.value.trim(),
-    quantity: Number(fields.quantityInput.value) || 1,
-    product_amount: grossSales,
-    shipping_amount: 0,
-    gross_sales: grossSales,
-    marketplace_fee: fee,
-    shipping_fee: 0,
-    other_platform_fee: 0,
-    settlement_amount: settlementAmount,
-    product_cost: cost,
-    packaging_cost: 0,
-    allocated_ad_cost: 0,
-    allocated_other_cost: 0,
-    net_profit: netProfit,
-    margin_rate: grossSales > 0 ? (netProfit / grossSales) * 100 : 0,
-  };
-}
-
-function saveOrderFormDraft(){
-  if(!addOrderFields) return;
-  const draft = {
-    platform: addOrderFields.platformSel.value,
-    order_date: addOrderFields.dateInput.value,
-    product_name: addOrderFields.productNameInput.value,
-    option_name: addOrderFields.optionNameInput.value,
-    quantity: addOrderFields.quantityInput.value,
-    gross_sales: addOrderFields.grossInput.value,
-    marketplace_fee: addOrderFields.feeInput.value,
-    product_cost: addOrderFields.costInput.value,
-  };
-  sessionStorage.setItem(ORDER_DRAFT_KEY, JSON.stringify(draft));
-}
-
-function loadOrderFormDraft(){
-  try {
-    const raw = sessionStorage.getItem(ORDER_DRAFT_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch(e){ return null; }
-}
-
-function toggleOrderForm(){
-  const wrap = document.getElementById('orderFormWrap');
-  const isOpening = wrap.style.display === 'none';
-  wrap.style.display = isOpening ? 'block' : 'none';
-  document.getElementById('addOrderBtn').textContent = isOpening ? '취소' : '+ 직접 입력';
-
-  if(isOpening && !addOrderFields){
-    const draft = loadOrderFormDraft();
-    const built = buildOrderFormFields(draft);
-    addOrderFields = built.fields;
-    wrap.innerHTML = '';
-    wrap.appendChild(built.wrap);
-
-    Object.values(addOrderFields).forEach(el => {
-      el.addEventListener('input', saveOrderFormDraft);
-      el.addEventListener('change', saveOrderFormDraft);
-    });
-
-    const statusEl = document.createElement('div');
-    statusEl.className = 'hint';
-    statusEl.id = 'addOrderStatus';
-    wrap.appendChild(statusEl);
-
-    const submitBtn = document.createElement('button');
-    submitBtn.className = 'primary';
-    submitBtn.style.marginTop = '10px';
-    submitBtn.textContent = '추가하기';
-    submitBtn.onclick = submitNewOrder;
-    wrap.appendChild(submitBtn);
-  }
-}
-
-async function submitNewOrder(){
-  const statusEl = document.getElementById('addOrderStatus');
-  const err = validateOrderFields(addOrderFields);
-  if(err){
-    statusEl.textContent = err;
-    statusEl.style.color = 'var(--error)';
-    return;
-  }
-
-  const row = readOrderFields(addOrderFields);
-  row.user_id = currentUser.id;
-  row.order_number = 'manual-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-  row.updated_at = new Date().toISOString();
-
-  statusEl.textContent = '저장하는 중...';
-  statusEl.style.color = '';
-
-  const { error } = await sb.from('settlement_orders').insert(row);
-
-  if(error){
-    statusEl.textContent = '저장에 실패했어요. 다시 시도해주세요.';
-    statusEl.style.color = 'var(--error)';
-    return;
-  }
-
-  sessionStorage.removeItem(ORDER_DRAFT_KEY);
-  addOrderFields = null;
-  document.getElementById('orderFormWrap').innerHTML = '';
-  document.getElementById('orderFormWrap').style.display = 'none';
-  document.getElementById('addOrderBtn').textContent = '+ 직접 입력';
-  renderOrdersTab();
-  renderReportTab();
-}
-
-function toggleOrderEdit(id){
-  const container = document.getElementById('orderEdit-' + id);
-  if(!container) return;
-  const isOpening = container.style.display === 'none';
-  container.style.display = isOpening ? 'block' : 'none';
-
-  if(isOpening && !container.dataset.built){
-    const order = (window._ordersCache || []).find(o => o.id === id);
-    if(!order) return;
-    const built = buildOrderFormFields(order);
-    container.appendChild(built.wrap);
-    container.dataset.built = '1';
-    container._fields = built.fields;
-
-    const statusEl = document.createElement('div');
-    statusEl.className = 'hint';
-    statusEl.id = 'orderEditStatus-' + id;
-    container.appendChild(statusEl);
-
-    const actions = document.createElement('div');
-    actions.className = 'hi-actions';
-    actions.style.marginTop = '10px';
-
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'mini-btn';
-    saveBtn.textContent = '저장';
-    saveBtn.onclick = function(){ saveOrderEdit(id); };
-    actions.appendChild(saveBtn);
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'mini-btn danger';
-    deleteBtn.textContent = '삭제';
-    deleteBtn.onclick = function(){ deleteOrder(id); };
-    actions.appendChild(deleteBtn);
-
-    container.appendChild(actions);
-  }
-}
-
-async function saveOrderEdit(id){
-  const container = document.getElementById('orderEdit-' + id);
-  const fields = container && container._fields;
-  const statusEl = document.getElementById('orderEditStatus-' + id);
-  if(!fields) return;
-
-  const err = validateOrderFields(fields);
-  if(err){
-    statusEl.textContent = err;
-    statusEl.style.color = 'var(--error)';
-    return;
-  }
-
-  const row = readOrderFields(fields);
-  statusEl.textContent = '저장하는 중...';
-  statusEl.style.color = '';
-
-  const { error } = await sb.from('settlement_orders').update(row).eq('id', id);
-
-  if(error){
-    statusEl.textContent = '저장에 실패했어요. 다시 시도해주세요.';
-    statusEl.style.color = 'var(--error)';
-    return;
-  }
-
-  const idx = (window._ordersCache || []).findIndex(o => o.id === id);
-  if(idx !== -1){
-    window._ordersCache[idx] = Object.assign({}, window._ordersCache[idx], row);
-    const summaryEl = document.getElementById('orderSummary-' + id);
-    if(summaryEl) summaryEl.innerHTML = orderSummaryHtml(window._ordersCache[idx]);
-  }
-
-  statusEl.textContent = '✓ 수정됐어요.';
-  statusEl.style.color = 'var(--teal)';
-  renderReportTab();
-}
-
-async function deleteOrder(id){
-  if(!confirm('이 주문을 삭제할까요?')) return;
-  const { error } = await sb.from('settlement_orders').delete().eq('id', id);
-  if(!error){
-    renderOrdersTab();
-    renderReportTab();
-  }
 }
 </script>
 </body>

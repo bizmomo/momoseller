@@ -70,6 +70,9 @@
   .lock-title{ font-size:13.5px; font-weight:500; color:var(--accent-deep); }
   .lock-row{ display:flex; gap:8px; margin-top:8px; }
   .lock-row input{ flex:1; }
+  .month-nav{ display:flex; align-items:center; justify-content:center; gap:24px; }
+  .month-nav .icon-btn{ width:36px; height:36px; }
+  .month-nav .month-label{ font-size:17px; font-weight:700; font-family:'Noto Serif KR', serif; min-width:110px; text-align:center; }
 </style>
 </head>
 <body>
@@ -86,6 +89,12 @@
     </div>
   </div>
 
+  <div class="tab-row">
+    <button class="tab-btn active" data-page-tab="upload" onclick="setPageTab('upload')">엑셀 업로드</button>
+    <button class="tab-btn" data-page-tab="orders" onclick="setPageTab('orders')">주문 목록</button>
+  </div>
+
+  <div id="uploadTab">
   <div class="card" id="uploadCard">
     <h2>엑셀 파일 업로드</h2>
     <div class="upload-add" onclick="document.getElementById('fileInput').click()">
@@ -265,6 +274,28 @@
     <button class="secondary" onclick="resetAnalysis()">다시 분석</button>
     <div class="hint" id="saveOrdersStatus" style="text-align:center;"></div>
   </div>
+  </div>
+
+  <div id="ordersTab" style="display:none;">
+    <div class="card">
+      <div class="month-nav">
+        <button class="icon-btn" onclick="changeSavedOrdersMonth(-1)" aria-label="이전 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+        <div class="month-label" id="savedOrdersMonthLabel">-</div>
+        <button class="icon-btn" onclick="changeSavedOrdersMonth(1)" aria-label="다음 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <h2 style="margin:0;">주문 목록</h2>
+        <button class="mini-btn" id="addOrderBtn" onclick="toggleAddOrderForm()">+ 직접 입력</button>
+      </div>
+      <div class="hint" style="margin-top:0; margin-bottom:12px;">이 달에 저장된 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.</div>
+      <div id="addOrderFormWrap" style="display:none; margin-bottom:18px; padding-bottom:18px; border-bottom:1px dashed var(--line);"></div>
+      <div id="savedOrderListWrap"></div>
+      <div class="hint" id="savedOrderListEmptyNote" style="display:none; text-align:center;">이 달에는 저장된 주문이 없어요.</div>
+    </div>
+  </div>
 
   <div class="foot-note">구매자 이름·연락처·주소 같은 개인정보는 읽지 않고, 정산 계산에 필요한 상품명·금액·수수료·주문일 정보만 사용해요.</div>
 
@@ -288,6 +319,7 @@ requireAuth(function(user){
 async function init(){
   await Promise.all([loadCostMap(), loadOtherExpenses()]);
   renderExpenseList();
+  loadUploadDraft();
 }
 
 // ============ state ============
@@ -299,8 +331,12 @@ let costMap = {};         // costKey -> { unitCost, packagingCost }
 let otherExpenses = [];   // rows from other_expenses for the current user
 let unregisteredCostItems = [];
 let lastUnallocated = { adCost: 0, otherCost: 0 };
+let savedOrdersViewYear = null;
+let savedOrdersViewMonth = null;
+let addOrderFields = null;
+const ORDER_DRAFT_KEY = 'momoseller_order_draft';
 
-const PLATFORM_LABELS = { coupang: '쿠팡', smartstore: '스마트스토어', unknown: '미확인' };
+const PLATFORM_LABELS = { coupang: '쿠팡', smartstore: '스마트스토어', unknown: '미확인', manual: '직접입력' };
 
 // ============ money / date normalize ============
 function parseMoney(v){
@@ -673,13 +709,17 @@ document.getElementById('fileInput').addEventListener('change', function(e){
 
 function addFile(file){
   const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
-  const id = 'f' + (++fileSeq);
+  // re-uploading a file with the same name (e.g. after a restored session) replaces
+  // it instead of adding a duplicate, so re-analyzing doesn't double-count its orders
+  const existingIdx = uploadedFiles.findIndex(f => f.name === file.name);
+  const id = existingIdx !== -1 ? uploadedFiles[existingIdx].id : 'f' + (++fileSeq);
   const entry = {
     id, name: file.name, platform: 'unknown', rows: [], error: null,
     dateMin: null, dateMax: null, productCount: 0,
     needsPassword: false, encryptedBytes: null,
   };
-  uploadedFiles.push(entry);
+  if(existingIdx !== -1) uploadedFiles[existingIdx] = entry;
+  else uploadedFiles.push(entry);
 
   if(ext !== '.xlsx' && ext !== '.xls'){
     entry.error = '엑셀(.xlsx, .xls) 파일만 업로드할 수 있어요.';
@@ -915,6 +955,7 @@ function renderFileList(){
 
   const hasValidFile = uploadedFiles.some(f => !f.error && f.rows.length > 0);
   document.getElementById('analyzeBtn').disabled = !hasValidFile;
+  saveUploadDraft();
 }
 
 function escapeHtml(str){
@@ -1008,7 +1049,7 @@ function analyzeFiles(){
   applyCostsAndExpenses(analyzedOrders);
 
   platformFilter = 'all';
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.platform === 'all'));
+  document.querySelectorAll('#resultCard .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.platform === 'all'));
 
   document.getElementById('resultCard').style.display = 'block';
   document.getElementById('orderListCard').style.display = 'block';
@@ -1050,21 +1091,104 @@ async function saveOrdersToDb(orders){
     updated_at: new Date().toISOString(),
   }));
 
-  if(rows.length === 0) return;
-  if(statusEl){ statusEl.textContent = '통계용 정산 데이터 저장 중...'; }
+  if(rows.length === 0){
+    if(statusEl){
+      statusEl.textContent = '저장할 주문 날짜 정보가 없어서 통계에는 반영되지 않았어요.';
+      statusEl.style.color = 'var(--error)';
+    }
+    return;
+  }
+  if(statusEl){ statusEl.textContent = '통계용 정산 데이터 저장 중...'; statusEl.style.color = ''; }
 
   const { error } = await sb.from('settlement_orders').upsert(rows, { onConflict: 'user_id,platform,order_number,product_name,option_name' });
 
   if(statusEl){
-    statusEl.textContent = error ? '' : `분석 페이지에서 볼 수 있도록 ${rows.length}건 저장했어요.`;
+    statusEl.textContent = error ? '통계용 데이터 저장에 실패했어요. 인터넷 연결을 확인하고 다시 분석해주세요.' : `✓ 분석 페이지에서 볼 수 있도록 ${rows.length}건 저장했어요.`;
+    statusEl.style.color = error ? 'var(--error)' : 'var(--teal)';
   }
   if(error) console.error('settlement_orders save failed', error);
 }
 
+// ============ keep the upload/analysis session across navigation until 다시 분석 ============
+const UPLOAD_DRAFT_KEY = 'momoseller_settlement_draft';
+
+function serializeOrderRow(o){
+  return Object.assign({}, o, { orderDate: o.orderDate ? o.orderDate.toISOString() : null });
+}
+
+function deserializeOrderRow(o){
+  return Object.assign({}, o, { orderDate: o.orderDate ? new Date(o.orderDate) : null });
+}
+
+function saveUploadDraft(){
+  const persistableFiles = uploadedFiles.filter(f => !f.needsPassword);
+  if(persistableFiles.length === 0 && analyzedOrders.length === 0){
+    sessionStorage.removeItem(UPLOAD_DRAFT_KEY);
+    return;
+  }
+  const draft = {
+    uploadedFiles: persistableFiles.map(f => ({
+      id: f.id, name: f.name, platform: f.platform, error: f.error,
+      rows: (f.rows || []).map(serializeOrderRow),
+      dateMin: f.dateMin ? f.dateMin.toISOString() : null,
+      dateMax: f.dateMax ? f.dateMax.toISOString() : null,
+      productCount: f.productCount,
+    })),
+    analyzedOrders: analyzedOrders.map(serializeOrderRow),
+    fileSeq, platformFilter,
+  };
+  try { sessionStorage.setItem(UPLOAD_DRAFT_KEY, JSON.stringify(draft)); } catch(e){ /* storage full - not critical, just skip persisting */ }
+}
+
+function loadUploadDraft(){
+  let draft;
+  try {
+    const raw = sessionStorage.getItem(UPLOAD_DRAFT_KEY);
+    if(!raw) return;
+    draft = JSON.parse(raw);
+  } catch(e){ return; }
+
+  uploadedFiles = (draft.uploadedFiles || []).map(f => Object.assign({}, f, {
+    aoa: null, encryptedBytes: null, needsPassword: false,
+    rows: (f.rows || []).map(deserializeOrderRow),
+    dateMin: f.dateMin ? new Date(f.dateMin) : null,
+    dateMax: f.dateMax ? new Date(f.dateMax) : null,
+  }));
+  analyzedOrders = (draft.analyzedOrders || []).map(deserializeOrderRow);
+  fileSeq = draft.fileSeq || fileSeq;
+  platformFilter = draft.platformFilter || 'all';
+
+  if(uploadedFiles.length) renderFileList();
+
+  if(analyzedOrders.length){
+    document.querySelectorAll('#resultCard .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.platform === platformFilter));
+    document.getElementById('resultCard').style.display = 'block';
+    document.getElementById('orderListCard').style.display = 'block';
+    document.getElementById('actionCard').style.display = 'block';
+    applyCostsAndExpenses(analyzedOrders);
+    renderCostCard();
+    renderResults();
+  }
+}
+
 function setPlatformFilter(p){
   platformFilter = p;
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.platform === p));
+  document.querySelectorAll('#resultCard .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.platform === p));
   renderResults();
+}
+
+function setPageTab(tab){
+  document.querySelectorAll('.tab-btn[data-page-tab]').forEach(b => b.classList.toggle('active', b.dataset.pageTab === tab));
+  document.getElementById('uploadTab').style.display = tab === 'upload' ? 'block' : 'none';
+  document.getElementById('ordersTab').style.display = tab === 'orders' ? 'block' : 'none';
+  if(tab === 'orders'){
+    if(!savedOrdersViewYear){
+      const today = new Date();
+      savedOrdersViewYear = today.getFullYear();
+      savedOrdersViewMonth = today.getMonth() + 1;
+    }
+    renderSavedOrdersTab();
+  }
 }
 
 function currentOrders(){
@@ -1183,6 +1307,7 @@ function renderResults(){
   `;
 
   renderOrderList();
+  saveUploadDraft();
 }
 
 function renderOrderList(){
@@ -1372,6 +1497,359 @@ function downloadResult(){
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ============ 저장된 주문 목록 (settlement_orders: excel-saved + manually entered) ============
+function monthRangeISO(year, month){
+  const start = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const end = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return { start, end };
+}
+
+async function fetchSavedOrdersInRange(start, end){
+  const { data } = await sb.from('settlement_orders').select('*')
+    .eq('user_id', currentUser.id)
+    .gte('order_date', start)
+    .lte('order_date', end);
+  return data || [];
+}
+
+function changeSavedOrdersMonth(delta){
+  savedOrdersViewMonth += delta;
+  if(savedOrdersViewMonth > 12){ savedOrdersViewMonth = 1; savedOrdersViewYear++; }
+  if(savedOrdersViewMonth < 1){ savedOrdersViewMonth = 12; savedOrdersViewYear--; }
+  renderSavedOrdersTab();
+}
+
+async function renderSavedOrdersTab(){
+  document.getElementById('savedOrdersMonthLabel').textContent = `${savedOrdersViewYear}년 ${savedOrdersViewMonth}월`;
+
+  const { start, end } = monthRangeISO(savedOrdersViewYear, savedOrdersViewMonth);
+  const orders = await fetchSavedOrdersInRange(start, end);
+  orders.sort((a, b) => b.order_date.localeCompare(a.order_date));
+  window._savedOrdersCache = orders;
+
+  document.getElementById('savedOrderListEmptyNote').style.display = orders.length === 0 ? 'block' : 'none';
+  document.getElementById('savedOrderListWrap').innerHTML = orders.map(o => `
+    <div class="order-card">
+      <div id="savedOrderSummary-${o.id}" onclick="toggleSavedOrderEdit('${o.id}')">
+        ${savedOrderSummaryHtml(o)}
+      </div>
+      <div id="savedOrderEdit-${o.id}" style="display:none;"></div>
+    </div>
+  `).join('');
+}
+
+function savedOrderSummaryHtml(o){
+  return `
+    <div class="order-card-top"><span>${escapeHtml(o.order_date.slice(5))}</span><span>${escapeHtml(PLATFORM_LABELS[o.platform] || o.platform)}</span></div>
+    <div class="order-card-name">${escapeHtml(o.product_name)}${o.option_name ? ' (' + escapeHtml(o.option_name) + ')' : ''}</div>
+    <div class="order-card-nums"><span>매출<b>${formatWon(o.gross_sales)}</b></span><span>순이익<b>${formatWon(o.net_profit)}</b></span><span>마진율<b>${o.margin_rate.toFixed(1)}%</b></span></div>
+  `;
+}
+
+function buildLabeledInput(labelText, inputEl){
+  const div = document.createElement('div');
+  const label = document.createElement('label');
+  label.textContent = labelText;
+  div.appendChild(label);
+  div.appendChild(inputEl);
+  return div;
+}
+
+function buildOrderFormFields(order){
+  const o = order || {};
+
+  const platformSel = document.createElement('select');
+  [['coupang', '쿠팡'], ['smartstore', '스마트스토어'], ['manual', '직접입력(기타)']].forEach(([val, label]) => {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = label;
+    platformSel.appendChild(opt);
+  });
+  platformSel.value = o.platform || 'manual';
+
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.value = o.order_date || new Date().toISOString().slice(0, 10);
+
+  const productNameInput = document.createElement('input');
+  productNameInput.type = 'text';
+  productNameInput.placeholder = '예) 겨울 기모 후드티';
+  productNameInput.value = o.product_name || '';
+
+  const optionNameInput = document.createElement('input');
+  optionNameInput.type = 'text';
+  optionNameInput.placeholder = '예) 블랙 / L (선택)';
+  optionNameInput.value = o.option_name || '';
+
+  const quantityInput = document.createElement('input');
+  quantityInput.type = 'number';
+  quantityInput.min = '1';
+  quantityInput.value = o.quantity || 1;
+
+  const grossInput = document.createElement('input');
+  grossInput.type = 'number';
+  grossInput.min = '0';
+  grossInput.placeholder = '0';
+  grossInput.value = o.gross_sales != null ? o.gross_sales : '';
+
+  const feeInput = document.createElement('input');
+  feeInput.type = 'number';
+  feeInput.min = '0';
+  feeInput.placeholder = '0';
+  feeInput.value = o.marketplace_fee != null ? o.marketplace_fee : 0;
+
+  const costInput = document.createElement('input');
+  costInput.type = 'number';
+  costInput.min = '0';
+  costInput.placeholder = '0';
+  costInput.value = o.product_cost != null ? o.product_cost : 0;
+
+  const wrap = document.createElement('div');
+
+  const row1 = document.createElement('div');
+  row1.className = 'row';
+  row1.style.marginBottom = '14px';
+  row1.appendChild(buildLabeledInput('판매처', platformSel));
+  row1.appendChild(buildLabeledInput('주문일', dateInput));
+  wrap.appendChild(row1);
+
+  const nameBlock = buildLabeledInput('상품명', productNameInput);
+  nameBlock.className = 'field-block';
+  wrap.appendChild(nameBlock);
+
+  const optionBlock = buildLabeledInput('옵션명 (선택)', optionNameInput);
+  optionBlock.className = 'field-block';
+  wrap.appendChild(optionBlock);
+
+  const row2 = document.createElement('div');
+  row2.className = 'row';
+  row2.style.marginBottom = '14px';
+  row2.appendChild(buildLabeledInput('수량', quantityInput));
+  row2.appendChild(buildLabeledInput('매출액 (원)', grossInput));
+  wrap.appendChild(row2);
+
+  const row3 = document.createElement('div');
+  row3.className = 'row';
+  row3.style.marginBottom = '14px';
+  row3.appendChild(buildLabeledInput('수수료 (원)', feeInput));
+  row3.appendChild(buildLabeledInput('원가 (원)', costInput));
+  wrap.appendChild(row3);
+
+  return {
+    wrap,
+    fields: { platformSel, dateInput, productNameInput, optionNameInput, quantityInput, grossInput, feeInput, costInput },
+  };
+}
+
+function validateOrderFields(fields){
+  const productName = fields.productNameInput.value.trim();
+  const gross = Number(fields.grossInput.value);
+  if(!productName) return '상품명을 입력해주세요.';
+  if(!fields.dateInput.value) return '주문일을 선택해주세요.';
+  if(fields.grossInput.value === '' || isNaN(gross) || gross < 0) return '매출액을 입력해주세요.';
+  return null;
+}
+
+function readOrderFields(fields){
+  const grossSales = Number(fields.grossInput.value) || 0;
+  const fee = Number(fields.feeInput.value) || 0;
+  const cost = Number(fields.costInput.value) || 0;
+  const settlementAmount = grossSales - fee;
+  const netProfit = settlementAmount - cost;
+  return {
+    platform: fields.platformSel.value,
+    order_date: fields.dateInput.value,
+    product_name: fields.productNameInput.value.trim(),
+    option_name: fields.optionNameInput.value.trim(),
+    quantity: Number(fields.quantityInput.value) || 1,
+    product_amount: grossSales,
+    shipping_amount: 0,
+    gross_sales: grossSales,
+    marketplace_fee: fee,
+    shipping_fee: 0,
+    other_platform_fee: 0,
+    settlement_amount: settlementAmount,
+    product_cost: cost,
+    packaging_cost: 0,
+    allocated_ad_cost: 0,
+    allocated_other_cost: 0,
+    net_profit: netProfit,
+    margin_rate: grossSales > 0 ? (netProfit / grossSales) * 100 : 0,
+  };
+}
+
+function saveOrderFormDraft(){
+  if(!addOrderFields) return;
+  const draft = {
+    platform: addOrderFields.platformSel.value,
+    order_date: addOrderFields.dateInput.value,
+    product_name: addOrderFields.productNameInput.value,
+    option_name: addOrderFields.optionNameInput.value,
+    quantity: addOrderFields.quantityInput.value,
+    gross_sales: addOrderFields.grossInput.value,
+    marketplace_fee: addOrderFields.feeInput.value,
+    product_cost: addOrderFields.costInput.value,
+  };
+  sessionStorage.setItem(ORDER_DRAFT_KEY, JSON.stringify(draft));
+}
+
+function loadOrderFormDraft(){
+  try {
+    const raw = sessionStorage.getItem(ORDER_DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e){ return null; }
+}
+
+function toggleAddOrderForm(){
+  const wrap = document.getElementById('addOrderFormWrap');
+  const isOpening = wrap.style.display === 'none';
+  wrap.style.display = isOpening ? 'block' : 'none';
+  document.getElementById('addOrderBtn').textContent = isOpening ? '취소' : '+ 직접 입력';
+
+  if(isOpening && !addOrderFields){
+    const draft = loadOrderFormDraft();
+    const built = buildOrderFormFields(draft);
+    addOrderFields = built.fields;
+    wrap.innerHTML = '';
+    wrap.appendChild(built.wrap);
+
+    Object.values(addOrderFields).forEach(el => {
+      el.addEventListener('input', saveOrderFormDraft);
+      el.addEventListener('change', saveOrderFormDraft);
+    });
+
+    const statusEl = document.createElement('div');
+    statusEl.className = 'hint';
+    statusEl.id = 'addOrderStatus';
+    wrap.appendChild(statusEl);
+
+    const submitBtn = document.createElement('button');
+    submitBtn.className = 'primary';
+    submitBtn.style.marginTop = '10px';
+    submitBtn.textContent = '추가하기';
+    submitBtn.onclick = submitNewSavedOrder;
+    wrap.appendChild(submitBtn);
+  }
+}
+
+async function submitNewSavedOrder(){
+  const statusEl = document.getElementById('addOrderStatus');
+  const err = validateOrderFields(addOrderFields);
+  if(err){
+    statusEl.textContent = err;
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  const row = readOrderFields(addOrderFields);
+  row.user_id = currentUser.id;
+  row.order_number = 'manual-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  row.updated_at = new Date().toISOString();
+
+  statusEl.textContent = '저장하는 중...';
+  statusEl.style.color = '';
+
+  const { error } = await sb.from('settlement_orders').insert(row);
+
+  if(error){
+    statusEl.textContent = '저장에 실패했어요. 다시 시도해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  sessionStorage.removeItem(ORDER_DRAFT_KEY);
+  addOrderFields = null;
+  document.getElementById('addOrderFormWrap').innerHTML = '';
+  document.getElementById('addOrderFormWrap').style.display = 'none';
+  document.getElementById('addOrderBtn').textContent = '+ 직접 입력';
+  renderSavedOrdersTab();
+}
+
+function toggleSavedOrderEdit(id){
+  const container = document.getElementById('savedOrderEdit-' + id);
+  if(!container) return;
+  const isOpening = container.style.display === 'none';
+  container.style.display = isOpening ? 'block' : 'none';
+
+  if(isOpening && !container.dataset.built){
+    const order = (window._savedOrdersCache || []).find(o => o.id === id);
+    if(!order) return;
+    const built = buildOrderFormFields(order);
+    built.wrap.className = 'order-detail';
+    container.appendChild(built.wrap);
+    container.dataset.built = '1';
+    container._fields = built.fields;
+
+    const statusEl = document.createElement('div');
+    statusEl.className = 'hint';
+    statusEl.id = 'savedOrderEditStatus-' + id;
+    container.appendChild(statusEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'hi-actions';
+    actions.style.marginTop = '10px';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'mini-btn';
+    saveBtn.textContent = '저장';
+    saveBtn.onclick = function(){ saveSavedOrderEdit(id); };
+    actions.appendChild(saveBtn);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'mini-btn danger';
+    deleteBtn.textContent = '삭제';
+    deleteBtn.onclick = function(){ deleteSavedOrder(id); };
+    actions.appendChild(deleteBtn);
+
+    container.appendChild(actions);
+  }
+}
+
+async function saveSavedOrderEdit(id){
+  const container = document.getElementById('savedOrderEdit-' + id);
+  const fields = container && container._fields;
+  const statusEl = document.getElementById('savedOrderEditStatus-' + id);
+  if(!fields) return;
+
+  const err = validateOrderFields(fields);
+  if(err){
+    statusEl.textContent = err;
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  const row = readOrderFields(fields);
+  statusEl.textContent = '저장하는 중...';
+  statusEl.style.color = '';
+
+  const { error } = await sb.from('settlement_orders').update(row).eq('id', id);
+
+  if(error){
+    statusEl.textContent = '저장에 실패했어요. 다시 시도해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  const idx = (window._savedOrdersCache || []).findIndex(o => o.id === id);
+  if(idx !== -1){
+    window._savedOrdersCache[idx] = Object.assign({}, window._savedOrdersCache[idx], row);
+    const summaryEl = document.getElementById('savedOrderSummary-' + id);
+    if(summaryEl) summaryEl.innerHTML = savedOrderSummaryHtml(window._savedOrdersCache[idx]);
+  }
+
+  statusEl.textContent = '✓ 수정됐어요.';
+  statusEl.style.color = 'var(--teal)';
+}
+
+async function deleteSavedOrder(id){
+  if(!confirm('이 주문을 삭제할까요?')) return;
+  const { error } = await sb.from('settlement_orders').delete().eq('id', id);
+  if(!error) renderSavedOrdersTab();
 }
 </script>
 </body>
