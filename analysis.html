@@ -153,6 +153,13 @@
         <button class="tab-btn active" data-months="6" onclick="setPeriodMonths(6)">6개월</button>
         <button class="tab-btn" data-months="12" onclick="setPeriodMonths(12)">12개월</button>
       </div>
+      <div class="row" style="margin-top:10px; align-items:center;">
+        <div><input type="month" id="customStartMonth"></div>
+        <span style="color:var(--ink-soft); font-size:13px;">~</span>
+        <div><input type="month" id="customEndMonth"></div>
+      </div>
+      <button class="secondary" onclick="applyCustomRange()">직접 지정한 기간 보기</button>
+      <div class="hint" id="customRangeStatus" style="display:none;"></div>
       <div class="field-block" style="margin-top:14px; margin-bottom:16px;">
         <select id="periodMetric" onchange="renderPeriodChart()">
           <option value="grossSales">매출</option>
@@ -182,6 +189,7 @@
 let currentUser = null;
 let viewYear, viewMonth;
 let periodMonths = 6;
+let customRange = null;
 let periodData = [];
 
 const PLATFORM_LABELS = { coupang: '쿠팡', smartstore: '스마트스토어' };
@@ -390,16 +398,59 @@ function renderCompareRow(prefix, curr, prev){
 
 function setPeriodMonths(n){
   periodMonths = n;
+  customRange = null;
+  document.getElementById('customRangeStatus').style.display = 'none';
   document.querySelectorAll('#periodTab .tab-btn[data-months]').forEach(b => b.classList.toggle('active', Number(b.dataset.months) === n));
+  loadPeriodData();
+}
+
+function applyCustomRange(){
+  const startVal = document.getElementById('customStartMonth').value;
+  const endVal = document.getElementById('customEndMonth').value;
+  const statusEl = document.getElementById('customRangeStatus');
+  statusEl.style.display = 'block';
+  statusEl.className = 'hint';
+
+  if(!startVal || !endVal){
+    statusEl.textContent = '시작월과 종료월을 모두 선택해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+  const [sy, sm] = startVal.split('-').map(Number);
+  const [ey, em] = endVal.split('-').map(Number);
+  if(sy > ey || (sy === ey && sm > em)){
+    statusEl.textContent = '시작월이 종료월보다 늦을 수 없어요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+  const totalMonths = (ey - sy) * 12 + (em - sm) + 1;
+  if(totalMonths > 36){
+    statusEl.textContent = '한 번에 최대 36개월까지 볼 수 있어요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  customRange = { startYear: sy, startMonth: sm, endYear: ey, endMonth: em };
+  statusEl.textContent = `${sy}년 ${sm}월 ~ ${ey}년 ${em}월 기간을 보고 있어요.`;
+  statusEl.style.color = 'var(--ink-soft)';
+  document.querySelectorAll('#periodTab .tab-btn[data-months]').forEach(b => b.classList.remove('active'));
   loadPeriodData();
 }
 
 async function loadPeriodData(){
   const months = [];
-  let y = viewYear, m = viewMonth;
-  for(let i = 0; i < periodMonths; i++){
-    months.unshift({ year: y, month: m });
-    m--; if(m < 1){ m = 12; y--; }
+  if(customRange){
+    let y = customRange.startYear, m = customRange.startMonth;
+    while(y < customRange.endYear || (y === customRange.endYear && m <= customRange.endMonth)){
+      months.push({ year: y, month: m });
+      m++; if(m > 12){ m = 1; y++; }
+    }
+  } else {
+    let y = viewYear, m = viewMonth;
+    for(let i = 0; i < periodMonths; i++){
+      months.unshift({ year: y, month: m });
+      m--; if(m < 1){ m = 12; y--; }
+    }
   }
   const first = monthRangeISO(months[0].year, months[0].month);
   const last = monthRangeISO(months[months.length - 1].year, months[months.length - 1].month);

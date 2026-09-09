@@ -43,7 +43,7 @@ body{
 .card h2{ font-family: 'Noto Serif KR', serif; font-size: 16px; margin: 0 0 12px; }
 
 label{ display:block; font-size: 13px; color: var(--ink-soft); margin-bottom: 6px; }
-input[type=email], input[type=password], input[type=text], input[type=number], select, textarea{
+input[type=email], input[type=password], input[type=text], input[type=number], input[type=month], select, textarea{
   width: 100%;
   font-family: inherit;
   font-size: 14px;
