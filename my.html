@@ -31,22 +31,10 @@
 
   <div class="card">
     <h2>쇼핑몰 연동</h2>
-    <p class="hint" style="margin-top:0; margin-bottom:12px;">내 쿠팡 계정을 연결하면 홈 화면에서 내 가게의 오늘 매출을 볼 수 있어요.</p>
-    <div class="hint" id="coupangStatus" style="margin-bottom:14px;">확인 중...</div>
-    <div class="field-block">
-      <label>업체코드 (Vendor ID)</label>
-      <input type="text" id="coupangVendorId" placeholder="예: A00012345">
-    </div>
-    <div class="field-block">
-      <label>Access Key</label>
-      <input type="text" id="coupangAccessKey" placeholder="쿠팡윙에서 발급받은 Access Key">
-    </div>
-    <div class="field-block">
-      <label>Secret Key</label>
-      <input type="password" id="coupangSecretKey" placeholder="쿠팡윙에서 발급받은 Secret Key">
-    </div>
-    <button class="primary" onclick="saveCoupangCredentials()">저장하기</button>
-    <div class="status" id="coupangSaveStatus"></div>
+    <p class="hint" style="margin-top:0; margin-bottom:14px;">쿠팡·네이버 계정을 연결하면 홈 화면에서 내 가게 매출을 볼 수 있어요.</p>
+    <a href="connect.html" style="text-decoration:none;">
+      <button class="primary">연동 관리로 이동</button>
+    </a>
   </div>
 
   <div class="card" id="adminCenterCard" style="display:none;">
@@ -74,7 +62,6 @@ requireAuth(function(user){
   currentUser = user;
   document.getElementById('myEmail').textContent = user.email;
   checkAdminCenter();
-  checkCoupangStatus();
 });
 
 async function checkAdminCenter(){
@@ -82,50 +69,6 @@ async function checkAdminCenter(){
   if(data && data.is_admin){
     document.getElementById('adminCenterCard').style.display = 'block';
   }
-}
-
-async function checkCoupangStatus(){
-  const { data } = await sb.from('profiles').select('coupang_vendor_id').eq('id', currentUser.id).single();
-  const statusEl = document.getElementById('coupangStatus');
-  if(data && data.coupang_vendor_id){
-    statusEl.textContent = `연동됨 (업체코드: ${data.coupang_vendor_id})`;
-    statusEl.style.color = 'var(--teal)';
-  } else {
-    statusEl.textContent = '아직 연동 안 됐어요.';
-    statusEl.style.color = '';
-  }
-}
-
-async function saveCoupangCredentials(){
-  const vendorId = document.getElementById('coupangVendorId').value.trim();
-  const accessKey = document.getElementById('coupangAccessKey').value.trim();
-  const secretKey = document.getElementById('coupangSecretKey').value.trim();
-  const statusEl = document.getElementById('coupangSaveStatus');
-
-  if(!vendorId || !accessKey || !secretKey){
-    statusEl.textContent = '업체코드, Access Key, Secret Key를 모두 입력해주세요.';
-    statusEl.className = 'status err';
-    return;
-  }
-
-  statusEl.textContent = '저장 중...';
-  statusEl.className = 'status';
-
-  const { data, error } = await sb.functions.invoke('save-coupang-credentials', {
-    body: { vendorId, accessKey, secretKey }
-  });
-
-  if(error || !data || data.error){
-    statusEl.textContent = data?.error || ('저장 실패: ' + (await getInvokeErrorMessage(error)));
-    statusEl.className = 'status err';
-    return;
-  }
-
-  statusEl.textContent = '저장됐어요!';
-  statusEl.className = 'status ok';
-  document.getElementById('coupangAccessKey').value = '';
-  document.getElementById('coupangSecretKey').value = '';
-  checkCoupangStatus();
 }
 </script>
 </body>
