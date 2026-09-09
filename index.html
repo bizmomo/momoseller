@@ -14,7 +14,7 @@
   #appView{ display:none; }
   #authSignin{ display:block; }
   #authSignup{ display:none; }
-  #aiResultOut{ min-height: 440px; }
+  .ai-result-textarea{ min-height: 300px; }
 </style>
 </head>
 <body>
@@ -104,14 +104,21 @@
         <textarea id="input" style="min-height:84px;" placeholder="예) 겨울에 입는 두꺼운 기모 후드티, 남녀공용, 색은 검정 회색 베이지 3가지, 원단 도톰함"></textarea>
       </div>
       <button class="primary" onclick="generatePrompt()">프롬프트 만들기</button>
-      <button class="secondary" id="aiGenBtn" style="display:none;" onclick="generateWithAI()">✨ AI로 바로 만들기</button>
+      <div id="aiGenControls" style="display:none; margin-top:14px;">
+        <div class="field-block">
+          <label for="aiGenCount">한 번에 몇 개 만들까요?</label>
+          <select id="aiGenCount" onchange="updateAiGenControls()">
+            <option value="1">1개</option>
+          </select>
+        </div>
+        <button class="secondary" id="aiGenBtn" onclick="generateWithAI()">✨ AI로 만들기</button>
+      </div>
       <div class="status" id="genStatus"></div>
     </div>
 
     <div class="card" id="aiResultCard" style="display:none;">
       <h2>✨ AI 생성 결과</h2>
-      <textarea class="promptOut" id="aiResultOut" readonly></textarea>
-      <button class="primary" style="margin-top:10px;" onclick="copyAiResult()">복사하기</button>
+      <div id="aiResultsContainer"></div>
       <div class="status" id="aiResultStatus"></div>
     </div>
 
@@ -163,30 +170,49 @@ function onLoggedIn(user){
 }
 
 const AI_FREE_LIMIT = 3;
+const AI_MAX_BATCH = 5;
 let aiIsPro = false;
+let aiRemaining = 0;
 
 async function checkAiAccess(){
-  const btn = document.getElementById('aiGenBtn');
   const { data } = await sb.from('profiles').select('is_pro, ai_generations_used, ai_generations_limit').eq('id', currentUser.id).single();
   aiIsPro = !!(data && data.is_pro);
   const used = (data && data.ai_generations_used) || 0;
   const limit = (data && data.ai_generations_limit) ?? AI_FREE_LIMIT;
-  updateAiButtonLabel(aiIsPro, Math.max(0, limit - used));
-  btn.style.display = 'block';
+  aiRemaining = Math.max(0, limit - used);
+  updateAiGenControls();
+  document.getElementById('aiGenControls').style.display = 'block';
 }
 
-function updateAiButtonLabel(isPro, remaining){
+function updateAiGenControls(){
+  const countSelect = document.getElementById('aiGenCount');
   const btn = document.getElementById('aiGenBtn');
-  if(isPro){
-    btn.textContent = '✨ AI로 바로 만들기 (Pro)';
-    btn.disabled = false;
-  } else if(remaining > 0){
-    btn.textContent = `✨ AI로 바로 만들기 (무료 ${remaining}회 남음)`;
-    btn.disabled = false;
-  } else {
-    btn.textContent = '✨ AI로 바로 만들기 (무료 소진)';
-    btn.disabled = false;
+
+  const maxCount = aiIsPro ? AI_MAX_BATCH : Math.max(1, Math.min(AI_MAX_BATCH, aiRemaining));
+  const prevValue = countSelect.value || '1';
+  countSelect.innerHTML = '';
+  for(let i = 1; i <= maxCount; i++){
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = `${i}개`;
+    countSelect.appendChild(opt);
   }
+  countSelect.value = countSelect.querySelector(`option[value="${prevValue}"]`) ? prevValue : '1';
+
+  if(!aiIsPro && aiRemaining <= 0){
+    btn.textContent = '✨ AI로 만들기 (무료 소진)';
+    btn.disabled = true;
+    countSelect.disabled = true;
+    return;
+  }
+
+  countSelect.disabled = false;
+  btn.disabled = false;
+  const selectedCount = parseInt(countSelect.value, 10);
+  const countLabel = selectedCount > 1 ? `${selectedCount}개 ` : '';
+  btn.textContent = aiIsPro
+    ? `✨ AI로 ${countLabel}만들기 (Pro)`
+    : `✨ AI로 ${countLabel}만들기 (무료 ${aiRemaining}회 남음)`;
 }
 
 function onLoggedOut(){
@@ -367,6 +393,8 @@ async function generateWithAI(){
   const brand = document.getElementById('brand').value.trim();
   const statusEl = document.getElementById('genStatus');
   const btn = document.getElementById('aiGenBtn');
+  const countSelect = document.getElementById('aiGenCount');
+  const count = parseInt(countSelect.value, 10) || 1;
 
   if(!input){
     statusEl.textContent = '상품 설명을 먼저 적어주세요.';
@@ -374,37 +402,73 @@ async function generateWithAI(){
     return;
   }
 
-  statusEl.textContent = 'AI가 만드는 중... (몇 초 걸려요)';
-  statusEl.className = 'status';
   btn.disabled = true;
+  countSelect.disabled = true;
 
-  const { data, error } = await sb.functions.invoke('generate-listing', {
-    body: { input, category, tone, brand }
-  });
-
-  btn.disabled = false;
-
-  if(error || !data || data.error){
-    statusEl.textContent = data?.error || ('AI 생성 실패: ' + (await getInvokeErrorMessage(error)));
-    statusEl.className = 'status err';
-    return;
-  }
-
-  if(!aiIsPro && typeof data.remaining === 'number'){
-    updateAiButtonLabel(false, data.remaining);
-  }
-
-  document.getElementById('aiResultOut').value = data.result;
+  document.getElementById('aiResultsContainer').innerHTML = '';
   document.getElementById('aiResultCard').style.display = 'block';
   document.getElementById('aiResultStatus').textContent = '';
-  statusEl.textContent = '';
+
+  for(let i = 0; i < count; i++){
+    statusEl.textContent = count > 1
+      ? `AI가 만드는 중... (${i + 1}/${count})`
+      : 'AI가 만드는 중... (몇 초 걸려요)';
+    statusEl.className = 'status';
+
+    const { data, error } = await sb.functions.invoke('generate-listing', {
+      body: { input, category, tone, brand }
+    });
+
+    if(error || !data || data.error){
+      statusEl.textContent = data?.error || ('AI 생성 실패: ' + (await getInvokeErrorMessage(error)));
+      statusEl.className = 'status err';
+      break;
+    }
+
+    if(!aiIsPro && typeof data.remaining === 'number'){
+      aiRemaining = data.remaining;
+    }
+    renderAiResult(data.result, i, count);
+
+    if(i === count - 1){
+      statusEl.textContent = '';
+    }
+  }
+
+  updateAiGenControls();
 }
 
-function copyAiResult(){
-  copyText(document.getElementById('aiResultOut').value);
-  const statusEl = document.getElementById('aiResultStatus');
-  statusEl.textContent = '복사됐어요.';
-  statusEl.className = 'status ok';
+function renderAiResult(text, index, total){
+  const container = document.getElementById('aiResultsContainer');
+  const block = document.createElement('div');
+  block.style.marginBottom = '16px';
+
+  if(total > 1){
+    const label = document.createElement('div');
+    label.className = 'hint';
+    label.style.marginTop = '0';
+    label.textContent = `결과 ${index + 1} / ${total}`;
+    block.appendChild(label);
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'promptOut ai-result-textarea';
+  textarea.readOnly = true;
+  textarea.value = text;
+  block.appendChild(textarea);
+
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'primary';
+  copyBtn.style.marginTop = '8px';
+  copyBtn.textContent = '복사하기';
+  copyBtn.onclick = function(){
+    copyText(textarea.value);
+    copyBtn.textContent = '복사됐어요!';
+    setTimeout(() => { copyBtn.textContent = '복사하기'; }, 1500);
+  };
+  block.appendChild(copyBtn);
+
+  container.appendChild(block);
 }
 
 function loadHandoffPrompt(){
