@@ -351,7 +351,7 @@ function normalizeHeader(h){
 }
 
 const COUPANG_MARKERS = ['묶음배송번호', '옵션판매가(판매단가)', '옵션판매가', '배송유형', '노출상품id', '옵션id'].map(normalizeHeader);
-const STORE_MARKERS = ['네이버페이주문관리수수료', '매출연동수수료', '정산예정금액', '상품주문번호'].map(normalizeHeader);
+const STORE_MARKERS = ['네이버페이주문관리수수료', '매출연동수수료', '정산예정금액', '상품주문번호', '정산기준금액(A)', 'Npay 수수료(B)'].map(normalizeHeader);
 
 function detectPlatform(headerRow){
   const normed = new Set(headerRow.map(normalizeHeader));
@@ -416,9 +416,9 @@ function parsePlatformRows(aoa, platform, settings, fileName){
       }
     : {
         required: [
-          { label: '주문일', names: ['주문일시', '결제일', '주문일'] },
+          { label: '주문일', names: ['주문일시', '결제일', '주문일', '정산기준일'] },
           { label: '상품명', names: ['상품명'] },
-          { label: '상품금액', names: ['최종 상품별 총 주문금액', '상품가격'] },
+          { label: '상품금액', names: ['최종 상품별 총 주문금액', '상품가격', '정산기준금액(A)', '정산기준금액'] },
         ],
       };
 
@@ -460,7 +460,7 @@ function parsePlatformRows(aoa, platform, settings, fileName){
       });
     } else {
       const name = getCol(row, map, ['상품명']);
-      const amount = getCol(row, map, ['최종 상품별 총 주문금액', '상품가격']);
+      const amount = getCol(row, map, ['최종 상품별 총 주문금액', '상품가격', '정산기준금액(A)', '정산기준금액']);
       if(name === null || String(name).trim() === '') continue;
       if(amount === null || amount === '') continue;
 
@@ -469,14 +469,20 @@ function parsePlatformRows(aoa, platform, settings, fileName){
       const grossSales = productAmount + shippingAmount;
       const quantity = Math.max(1, parseMoney(getCol(row, map, ['수량'])) || 1);
 
-      const actualCommission = hasCol(map, ['매출연동 수수료']) ? parseMoney(getCol(row, map, ['매출연동 수수료'])) : null;
-      const actualPgFee = hasCol(map, ['네이버페이 주문관리 수수료']) ? parseMoney(getCol(row, map, ['네이버페이 주문관리 수수료'])) : null;
-      const actualSettle = hasCol(map, ['정산예정금액']) ? parseMoney(getCol(row, map, ['정산예정금액'])) : null;
+      const commissionNames = ['매출연동 수수료', '매출연동 수수료 합계(C)', '매출연동 수수료 합계'];
+      const pgFeeNames = ['네이버페이 주문관리 수수료', 'Npay 수수료(B)', 'Npay 수수료'];
+      const installmentFeeNames = ['무이자할부 수수료(D)', '무이자할부 수수료'];
+      const settleNames = ['정산예정금액', '정산금액'];
+
+      const actualCommission = hasCol(map, commissionNames) ? parseMoney(getCol(row, map, commissionNames)) : null;
+      const actualPgFee = hasCol(map, pgFeeNames) ? parseMoney(getCol(row, map, pgFeeNames)) : null;
+      const actualInstallmentFee = hasCol(map, installmentFeeNames) ? parseMoney(getCol(row, map, installmentFeeNames)) : null;
+      const actualSettle = hasCol(map, settleNames) ? parseMoney(getCol(row, map, settleNames)) : null;
 
       let marketplaceFee, otherPlatformFee, shippingFee, settlementAmount, hasActualSettlement;
       if(!settings.storeOverride && (actualCommission !== null || actualPgFee !== null)){
         marketplaceFee = Math.abs(actualCommission || 0);
-        otherPlatformFee = Math.abs(actualPgFee || 0);
+        otherPlatformFee = Math.abs(actualPgFee || 0) + Math.abs(actualInstallmentFee || 0);
         shippingFee = 0;
         hasActualSettlement = actualSettle !== null;
         settlementAmount = hasActualSettlement ? actualSettle : (grossSales - marketplaceFee - otherPlatformFee);
@@ -489,7 +495,7 @@ function parsePlatformRows(aoa, platform, settings, fileName){
       }
 
       rows.push({
-        platform, orderDate: parseDateValue(getCol(row, map, ['주문일시', '결제일', '주문일'])),
+        platform, orderDate: parseDateValue(getCol(row, map, ['주문일시', '결제일', '주문일', '정산기준일'])),
         orderNumber: String(getCol(row, map, ['상품주문번호', '주문번호']) || ''),
         productName: String(name), optionName: getCol(row, map, ['옵션정보', '옵션명']) ? String(getCol(row, map, ['옵션정보', '옵션명'])) : null,
         quantity, productAmount, shippingAmount, grossSales,
