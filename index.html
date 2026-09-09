@@ -23,7 +23,7 @@
   <div class="masthead">
     <div>
       <h1>모모셀러</h1>
-      <p>로그인하면 만든 프롬프트가 내 계정에 저장돼요.</p>
+      <p>AI로 만든 상품 정보를 내 계정에 저장할 수 있어요.</p>
     </div>
     <div class="page-actions">
       <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
@@ -131,8 +131,7 @@
         <label for="excludeKeywords">제외 키워드 (선택, 쉼표로 구분)</label>
         <input type="text" id="excludeKeywords" placeholder="예) 대용량, 프리미엄">
       </div>
-      <button class="primary" style="padding:9px 14px; font-size:13.5px;" onclick="generatePrompt()">무료 프롬프트 만들기</button>
-      <div id="aiGenControls" style="display:none; margin-top:14px;">
+      <div id="aiGenControls" style="display:none;">
         <div class="field-block">
           <label for="aiGenCount">한 번에 몇 개 만들까요?</label>
           <select id="aiGenCount" onchange="updateAiGenControls()">
@@ -172,16 +171,6 @@
       <div id="aiResultsContainer"></div>
       <div class="status" id="aiResultStatus"></div>
     </div>
-
-    <div class="card" id="resultCard" style="display:none;">
-      <h2>Claude로 보낼 내용 (수정 가능)</h2>
-      <textarea class="promptOut" id="promptOut"></textarea>
-      <div class="hint">내용을 여기서 바로 고칠 수 있어요.</div>
-      <button class="primary" style="margin-top:10px;" onclick="copyPrompt()">복사하기</button>
-      <button class="secondary" onclick="openInClaude()">Claude에서 열기</button>
-      <button class="secondary" onclick="saveToHistory()">내 계정에 저장하기</button>
-      <div class="status" id="saveStatus"></div>
-    </div>
   </div>
 
 </div>
@@ -216,7 +205,6 @@ function onLoggedIn(user){
   currentUser = user;
   document.getElementById('authView').style.display = 'none';
   document.getElementById('appView').style.display = 'block';
-  loadHandoffPrompt();
   checkAiAccess();
 }
 
@@ -397,146 +385,8 @@ function getSelectedMarkets(){
   return markets;
 }
 
-function buildPrompt(input, category, tone, brand, markets, includeKeywords, excludeKeywords){
-  const wantsCoupang = markets.includes('coupang');
-  const wantsStore = markets.includes('smartstore');
-
-  let rules = `[상품명 규칙]
-1) 특수문자(★☆♥ 등)와 이모지를 쓰지 않는다.
-2) 같은 뜻의 단어를 반복하지 않는다(예: '원피스 ... 원피스'처럼 유의어 중복 금지).
-3) 특정 브랜드를 모방/암시하는 표현('OO스타일', '이미테이션' 등)을 쓰지 않는다.
-4) 10대/20대/30대처럼 특정 연령대를 못박는 타겟 키워드를 쓰지 않는다.
-5) '신상품', '주문폭주', '특가', '할인', '무료배송', '이벤트' 같은 홍보성 키워드를 쓰지 않는다.
-6) 렌탈/해외/중고 여부는 기입하지 않는다.
-7) 구성은 [브랜드명(있으면) + 소재/특징 속성 + 카테고리명 + 사이즈(해당시) + 시즌성/용도(해당시)] 순서로 간결하게, 25자 내외로 3개를 서로 다른 각도(속성 강조/카테고리 강조/용도 강조)로 만든다.`;
-
-  if(wantsStore){
-    rules += `
-
-[스마트스토어 검색태그 규칙]
-10개, # 기호 없이 순수 단어/구문으로, 상품명에 이미 쓴 단어·카테고리명·브랜드명과 겹치지 않는 새로운 검색 키워드(용도, 상황, 소재, 특징, 관련 검색어)로만 채운다. '할인/무료배송/특가/이벤트' 같은 홍보 문구는 쓰지 않는다.`;
-  }
-
-  if(wantsCoupang){
-    rules += `
-
-[쿠팡 검색어 규칙]
-20개${wantsStore ? ', 스마트스토어 태그 10개와 최대한 겹치지 않게 다른 표현·동의어·연관 키워드까지 넓혀서 채운다(쿠팡은 검색어 허용 폭이 더 넓음)' : ', 다양한 표현·동의어·연관 키워드로 폭넓게 채운다'}. 마찬가지로 상품명과 겹치지 않게 하고, 홍보 문구는 쓰지 않는다.`;
-  }
-
-  rules += `
-
-[상품소개글]
-3~5문장, 과장 없이 구체적인 특징 위주로, 한 문단으로 쓴다.`;
-
-  const keywordLines = [];
-  if(includeKeywords && includeKeywords.trim()){
-    keywordLines.push(`- 반드시 자연스럽게 포함해야 하는 핵심 키워드: ${includeKeywords.trim()} (상품명·검색어·소개글 중 어울리는 곳에 억지스럽지 않게 녹여 넣는다)`);
-  }
-  if(excludeKeywords && excludeKeywords.trim()){
-    keywordLines.push(`- 절대 사용하면 안 되는 제외 키워드: ${excludeKeywords.trim()} (이 단어와 그 유의어는 어디에도 쓰지 않는다)`);
-  }
-  const keywordSection = keywordLines.length ? `\n\n[키워드 지침]\n${keywordLines.join('\n')}` : '';
-
-  const parts = ['상품명 3개'];
-  if(wantsStore) parts.push('스마트스토어 검색태그 10개');
-  if(wantsCoupang) parts.push('쿠팡 검색어 20개');
-  parts.push('상품소개글 1개');
-
-  const formatLines = ['상품명', '1)', '2)', '3)', ''];
-  if(wantsStore) formatLines.push('스마트스토어 검색태그 (쉼표로 구분)', '');
-  if(wantsCoupang) formatLines.push('쿠팡 검색어 (쉼표로 구분)', '');
-  formatLines.push('상품소개글', '');
-
-  const platformLabel = wantsStore && wantsCoupang ? '네이버 스마트스토어와 쿠팡' : wantsStore ? '네이버 스마트스토어' : '쿠팡';
-
-  return `너는 ${platformLabel} 상품 등록을 돕는 카피라이터야. 아래 상품 정보로 ${parts.join(', ')}를 만들어줘.
-
-${rules}${keywordSection}
-
-[상품 정보]
-브랜드명: ${brand || "없음"}
-카테고리: ${category || "미지정"}
-원하는 톤: ${tone}
-상품 설명: ${input}
-
-아래 형식 그대로 보기 좋게 정리해서 답변해줘:
-
-${formatLines.join('\n')}`;
-}
-
-let lastInput = { input:'', category:'', tone:'', brand:'', prompt:'' };
-
-function generatePrompt(){
-  const input = document.getElementById('input').value.trim();
-  const category = document.getElementById('category').value;
-  const tone = document.getElementById('tone').value;
-  const brand = document.getElementById('brand').value.trim();
-  const includeKeywords = document.getElementById('includeKeywords').value.trim();
-  const excludeKeywords = document.getElementById('excludeKeywords').value.trim();
-  const markets = getSelectedMarkets();
-  const statusEl = document.getElementById('genStatus');
-
-  if(!input){
-    statusEl.textContent = '상품 설명을 먼저 적어주세요.';
-    statusEl.className = 'status err';
-    return;
-  }
-  if(markets.length === 0){
-    statusEl.textContent = '판매처를 최소 1개 선택해주세요.';
-    statusEl.className = 'status err';
-    return;
-  }
-
-  const prompt = buildPrompt(input, category, tone, brand, markets, includeKeywords, excludeKeywords);
-  document.getElementById('promptOut').value = prompt;
-  document.getElementById('resultCard').style.display = 'block';
-  document.getElementById('saveStatus').textContent = '';
-  statusEl.textContent = '';
-
-  lastInput = { input, category, tone, brand, prompt };
-}
-
 function copyText(text){
   navigator.clipboard.writeText(text);
-}
-
-function copyPrompt(){
-  copyText(document.getElementById('promptOut').value);
-  const statusEl = document.getElementById('saveStatus');
-  statusEl.textContent = '복사됐어요.';
-  statusEl.className = 'status ok';
-}
-
-function openInClaude(){
-  const text = document.getElementById('promptOut').value;
-  copyText(text);
-  window.open('https://claude.ai/new?q=' + encodeURIComponent(text), '_blank');
-}
-
-async function saveToHistory(){
-  if(!currentUser) return;
-  const statusEl = document.getElementById('saveStatus');
-  const promptText = document.getElementById('promptOut').value;
-  statusEl.textContent = '저장 중...';
-  statusEl.className = 'status';
-
-  const { error } = await sb.from('product_prompts').insert({
-    user_id: currentUser.id,
-    input_text: lastInput.input,
-    category: lastInput.category,
-    tone: lastInput.tone,
-    brand: lastInput.brand,
-    prompt_text: promptText
-  });
-
-  if(error){
-    statusEl.textContent = '저장 실패: ' + error.message;
-    statusEl.className = 'status err';
-    return;
-  }
-  statusEl.textContent = '저장됐어요.';
-  statusEl.className = 'status ok';
 }
 
 async function generateWithAI(){
@@ -591,7 +441,7 @@ async function generateWithAI(){
     if(!aiIsPro && typeof data.remaining === 'number'){
       aiRemaining = data.remaining;
     }
-    renderAiResult(data.result, i, count);
+    renderAiResult(data.result, i, count, { input: inputs[i], category, tone, brand });
 
     if(i === count - 1){
       statusEl.textContent = '';
@@ -601,7 +451,7 @@ async function generateWithAI(){
   updateAiGenControls();
 }
 
-function renderAiResult(text, index, total){
+function renderAiResult(text, index, total, meta){
   const container = document.getElementById('aiResultsContainer');
   const block = document.createElement('div');
   block.style.marginBottom = '16px';
@@ -631,24 +481,34 @@ function renderAiResult(text, index, total){
   };
   block.appendChild(copyBtn);
 
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'secondary';
+  saveBtn.textContent = '내 계정에 저장하기';
+  saveBtn.onclick = function(){
+    saveAiResultToHistory(text, meta, saveBtn);
+  };
+  block.appendChild(saveBtn);
+
   container.appendChild(block);
 }
 
-function loadHandoffPrompt(){
-  const raw = sessionStorage.getItem('momoseller_load_prompt');
-  if(!raw) return;
-  sessionStorage.removeItem('momoseller_load_prompt');
-  try{
-    const row = JSON.parse(raw);
-    document.getElementById('input').value = row.input_text || '';
-    document.getElementById('category').value = row.category || '';
-    document.getElementById('tone').value = row.tone || '친근하고 신뢰감 있게';
-    document.getElementById('brand').value = row.brand || '';
-    document.getElementById('promptOut').value = row.prompt_text || '';
-    document.getElementById('resultCard').style.display = 'block';
-  } catch(err){
-    console.error(err);
-  }
+async function saveAiResultToHistory(text, meta, btn){
+  if(!currentUser) return;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '저장 중...';
+
+  const { error } = await sb.from('product_prompts').insert({
+    user_id: currentUser.id,
+    input_text: meta.input,
+    category: meta.category,
+    tone: meta.tone,
+    brand: meta.brand,
+    prompt_text: text
+  });
+
+  btn.textContent = error ? '저장 실패' : '저장됐어요!';
+  setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1500);
 }
 </script>
 </body>

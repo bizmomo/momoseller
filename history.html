@@ -76,8 +76,12 @@ async function loadHistory(){
       </div>
       <div class="hi-input">${escapeHtml(row.input_text)}</div>
       <div class="hi-actions">
-        <button class="mini-btn" onclick="viewHistoryItem('${row.id}')">불러오기</button>
+        <button class="mini-btn" onclick="toggleHistoryResult('${row.id}')">결과 보기</button>
         <button class="mini-btn danger" onclick="deleteHistoryItem('${row.id}')">삭제</button>
+      </div>
+      <div class="hi-result" id="hiResult-${row.id}" style="display:none;">
+        <textarea class="promptOut" style="min-height:220px; margin-top:10px;" readonly>${escapeHtml(row.prompt_text)}</textarea>
+        <button class="mini-btn" style="margin-top:8px;" onclick="copyHistoryResult('${row.id}', this)">복사하기</button>
       </div>
     `;
     listEl.appendChild(div);
@@ -86,11 +90,19 @@ async function loadHistory(){
   window._historyCache = data;
 }
 
-function viewHistoryItem(id){
+function toggleHistoryResult(id){
+  const el = document.getElementById('hiResult-' + id);
+  if(!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function copyHistoryResult(id, btn){
   const row = (window._historyCache || []).find(r => r.id === id);
   if(!row) return;
-  sessionStorage.setItem('momoseller_load_prompt', JSON.stringify(row));
-  window.location.href = 'index.html';
+  navigator.clipboard.writeText(row.prompt_text || '');
+  const original = btn.textContent;
+  btn.textContent = '복사됐어요!';
+  setTimeout(() => { btn.textContent = original; }, 1500);
 }
 
 async function deleteHistoryItem(id){
