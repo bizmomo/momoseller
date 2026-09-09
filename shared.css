@@ -130,6 +130,19 @@ button.secondary:hover{ border-color: var(--accent); color: var(--accent-deep); 
 
 .foot-note{ margin-top: 20px; font-size: 12px; color: var(--ink-soft); line-height: 1.7; }
 
+.menu-list{
+  background: var(--card); border: 1px solid var(--line); border-radius: 4px;
+  overflow: hidden; margin-bottom: 16px;
+}
+.menu-item{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 16px 18px; font-size: 14.5px; color: var(--ink);
+  text-decoration: none; border-bottom: 1px solid var(--line);
+}
+.menu-item:last-child{ border-bottom: none; }
+.menu-item:hover{ background: #FAF8F1; }
+.menu-item svg{ color: var(--ink-soft); flex-shrink: 0; }
+
 .stat-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
 .stat-box{ background:#FAF8F1; border:1px solid var(--line); border-radius:4px; padding:14px; }
 .stat-label{ font-size:12px; color:var(--ink-soft); margin-bottom:4px; }
