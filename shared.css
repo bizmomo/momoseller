@@ -27,7 +27,7 @@ body{
 .icon-btn{
   width:36px; height:36px; display:flex; align-items:center; justify-content:center;
   border:1px solid var(--line); background:#fff; border-radius:50%;
-  font-size:16px; line-height:1; cursor:pointer; color:var(--ink-soft);
+  cursor:pointer; color:var(--ink-soft);
 }
 .icon-btn:hover{ border-color:var(--accent); color:var(--accent-deep); }
 
@@ -144,7 +144,6 @@ button.secondary:hover{ border-color: var(--accent); color: var(--accent-deep); 
   display:flex; flex-direction:column; align-items:center; gap:2px;
   text-decoration:none; color:var(--ink-soft); font-size:11px; white-space:nowrap;
 }
-.my-link .my-icon{ font-size:20px; line-height:1; }
 .my-link:hover{ color:var(--ink); }
 
 .bottom-nav{
