@@ -577,7 +577,7 @@ function parseAiResult(text){
   };
 }
 
-function buildCopyField(labelText, value, tag){
+function buildCopyField(labelText, value, tag, minHeight){
   const block = document.createElement('div');
   block.className = 'field-block';
 
@@ -587,7 +587,7 @@ function buildCopyField(labelText, value, tag){
 
   const field = document.createElement(tag);
   if(tag === 'input') field.type = 'text';
-  else field.style.minHeight = '80px';
+  else field.style.minHeight = (minHeight || 80) + 'px';
   field.value = value;
   block.appendChild(field);
 
@@ -657,7 +657,7 @@ function renderAiResult(text, index, total, meta){
       splitWrap.appendChild(buildCopyField('쿠팡 검색어', parsed.coupang, 'textarea'));
     }
     if(parsed.desc){
-      splitWrap.appendChild(buildCopyField('상품소개글', parsed.desc, 'textarea'));
+      splitWrap.appendChild(buildCopyField('상품소개글', parsed.desc, 'textarea', 180));
     }
     block.appendChild(splitWrap);
   }
