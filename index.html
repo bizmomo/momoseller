@@ -114,6 +114,27 @@
         <button class="secondary" id="aiGenBtn" onclick="generateWithAI()">✨ AI로 만들기</button>
       </div>
       <div class="status" id="genStatus"></div>
+
+      <div id="chargeSection" style="display:none; margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
+        <div class="field-block">
+          <label for="chargeTier">충전할 개수</label>
+          <select id="chargeTier">
+            <option value="10">10개 - 500원</option>
+            <option value="100">100개 - 4,900원</option>
+            <option value="1000">1000개 - 48,000원</option>
+          </select>
+        </div>
+        <button class="primary" onclick="showChargeInfo()">충전하기</button>
+
+        <div id="chargeInfoBox" style="display:none; margin-top:14px;">
+          <p class="hint" style="margin-top:0;">
+            아래 계좌로 <b id="chargeAmountText"></b>을 입금해주세요.<br>
+            <b>카카오뱅크 3333-01-0000000</b> (예금주: 000)
+          </p>
+          <button class="primary" onclick="submitChargeRequest()">입금 완료, 충전 요청하기</button>
+          <div class="status" id="chargeRequestStatus"></div>
+        </div>
+      </div>
     </div>
 
     <div class="card" id="aiResultCard" style="display:none;">
@@ -203,9 +224,11 @@ function updateAiGenControls(){
     btn.textContent = '✨ AI로 만들기 (무료 소진)';
     btn.disabled = true;
     countSelect.disabled = true;
+    document.getElementById('chargeSection').style.display = 'block';
     return;
   }
 
+  document.getElementById('chargeSection').style.display = 'none';
   countSelect.disabled = false;
   btn.disabled = false;
   const selectedCount = parseInt(countSelect.value, 10);
@@ -213,6 +236,40 @@ function updateAiGenControls(){
   btn.textContent = aiIsPro
     ? `✨ AI로 ${countLabel}만들기 (Pro)`
     : `✨ AI로 ${countLabel}만들기 (무료 ${aiRemaining}회 남음)`;
+}
+
+const CHARGE_TIERS = { 10: 500, 100: 4900, 1000: 48000 };
+
+function showChargeInfo(){
+  const tier = document.getElementById('chargeTier').value;
+  const price = CHARGE_TIERS[tier];
+  document.getElementById('chargeAmountText').textContent = `${price.toLocaleString('ko-KR')}원`;
+  document.getElementById('chargeInfoBox').style.display = 'block';
+}
+
+async function submitChargeRequest(){
+  const tier = parseInt(document.getElementById('chargeTier').value, 10);
+  const price = CHARGE_TIERS[tier];
+  const statusEl = document.getElementById('chargeRequestStatus');
+
+  statusEl.textContent = '요청 접수 중...';
+  statusEl.className = 'status';
+
+  const { error } = await sb.from('charge_requests').insert({
+    user_id: currentUser.id,
+    email: currentUser.email,
+    credits: tier,
+    price_won: price,
+  });
+
+  if(error){
+    statusEl.textContent = '요청 실패: ' + error.message;
+    statusEl.className = 'status err';
+    return;
+  }
+
+  statusEl.textContent = '충전 요청 접수됐어요. 입금 확인 후 운영자가 충전해드려요.';
+  statusEl.className = 'status ok';
 }
 
 function onLoggedOut(){

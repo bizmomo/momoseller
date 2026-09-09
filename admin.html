@@ -45,6 +45,12 @@
     <div class="status" id="chargeStatus"></div>
   </div>
 
+  <div id="chargeRequestsCard" class="card" style="display:none;">
+    <h2>충전 요청 목록</h2>
+    <p class="hint" style="margin-top:-6px; margin-bottom:14px;">사용자가 입금 완료 후 접수한 요청이에요. 계좌에 입금이 확인되면 위 폼으로 충전해주고, 처리했으면 삭제해주세요.</p>
+    <div id="chargeRequestsList"><div class="empty-note">불러오는 중...</div></div>
+  </div>
+
 </div>
 
 <script>
@@ -62,6 +68,81 @@ async function checkAdminAccess(){
     return;
   }
   document.getElementById('adminCard').style.display = 'block';
+  document.getElementById('chargeRequestsCard').style.display = 'block';
+  loadChargeRequests();
+}
+
+async function loadChargeRequests(){
+  const listEl = document.getElementById('chargeRequestsList');
+  listEl.innerHTML = '<div class="empty-note">불러오는 중...</div>';
+
+  const { data, error } = await sb
+    .from('charge_requests')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if(error){
+    listEl.innerHTML = `<div class="empty-note">불러오기 실패: ${escapeHtml(error.message)}</div>`;
+    return;
+  }
+
+  if(!data || data.length === 0){
+    listEl.innerHTML = '<div class="empty-note">대기 중인 충전 요청이 없어요.</div>';
+    return;
+  }
+
+  listEl.innerHTML = '';
+  data.forEach(req => {
+    const date = new Date(req.created_at);
+    const dateStr = `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,'0')}.${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+
+    const div = document.createElement('div');
+    div.className = 'history-item';
+
+    const top = document.createElement('div');
+    top.className = 'hi-top';
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'hi-date';
+    dateSpan.textContent = dateStr;
+    top.appendChild(dateSpan);
+    div.appendChild(top);
+
+    const info = document.createElement('div');
+    info.className = 'hi-input';
+    info.textContent = `${req.email} — ${req.credits}개 (${req.price_won.toLocaleString('ko-KR')}원)`;
+    div.appendChild(info);
+
+    const actions = document.createElement('div');
+    actions.className = 'hi-actions';
+
+    const fillBtn = document.createElement('button');
+    fillBtn.className = 'mini-btn';
+    fillBtn.textContent = '충전 폼에 입력';
+    fillBtn.onclick = () => {
+      document.getElementById('targetEmail').value = req.email;
+      document.getElementById('chargeAmount').value = req.credits;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    actions.appendChild(fillBtn);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'mini-btn danger';
+    deleteBtn.textContent = '삭제';
+    deleteBtn.onclick = async () => {
+      await sb.from('charge_requests').delete().eq('id', req.id);
+      loadChargeRequests();
+    };
+    actions.appendChild(deleteBtn);
+
+    div.appendChild(actions);
+    listEl.appendChild(div);
+  });
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 async function chargeUser(){
