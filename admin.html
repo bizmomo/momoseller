@@ -18,9 +18,9 @@
       <h1>충전 관리</h1>
       <p>운영자 전용 페이지예요. 다른 계정에는 보이지 않아요.</p>
     </div>
-    <div class="user-chip" id="userChip" style="display:none;">
-      <span id="userEmail"></span>
-      <button onclick="signOut()">로그아웃</button>
+    <div class="page-actions">
+      <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기">←</button>
+      <button class="icon-btn" onclick="sharePage()" aria-label="공유하기">🔗</button>
     </div>
   </div>
 
@@ -52,7 +52,6 @@ let currentUser = null;
 
 requireAuth(function(user){
   currentUser = user;
-  renderUserChip(user);
   checkAdminAccess();
 });
 

@@ -19,9 +19,9 @@
       <h1>정산 정리기</h1>
       <p>쿠팡·스마트스토어에서 받은 주문 엑셀을 올리면, 매출/수수료/순수익을 정리한 정산 요약 파일로 만들어드려요. 파일은 이 화면(브라우저) 안에서만 처리되고 어디로도 전송되지 않아요.</p>
     </div>
-    <div class="user-chip" id="userChip" style="display:none;">
-      <span id="userEmail"></span>
-      <button onclick="signOut()">로그아웃</button>
+    <div class="page-actions">
+      <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기">←</button>
+      <button class="icon-btn" onclick="sharePage()" aria-label="공유하기">🔗</button>
     </div>
   </div>
 
@@ -114,9 +114,7 @@
 </div></nav>
 
 <script>
-requireAuth(function(user){
-  renderUserChip(user);
-});
+requireAuth(function(){});
 
 let coupangRows = null;
 let storeRows = null;

@@ -18,9 +18,9 @@
       <h1>저장된 기록</h1>
       <p>로그인한 계정에만 보여요. 다른 사람과 공유되지 않아요.</p>
     </div>
-    <div class="user-chip" id="userChip" style="display:none;">
-      <span id="userEmail"></span>
-      <button onclick="signOut()">로그아웃</button>
+    <div class="page-actions">
+      <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기">←</button>
+      <button class="icon-btn" onclick="sharePage()" aria-label="공유하기">🔗</button>
     </div>
   </div>
 
@@ -40,8 +40,7 @@
 </div></nav>
 
 <script>
-requireAuth(function(user){
-  renderUserChip(user);
+requireAuth(function(){
   loadHistory();
 });
 

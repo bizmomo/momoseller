@@ -17,11 +17,22 @@ function requireAuth(onUser){
   });
 }
 
-function renderUserChip(user){
-  const emailEl = document.getElementById('userEmail');
-  const chipEl = document.getElementById('userChip');
-  if(emailEl) emailEl.textContent = user.email;
-  if(chipEl) chipEl.style.display = 'block';
+function goBack(){
+  window.history.back();
+}
+
+async function sharePage(){
+  const shareData = { title: document.title, url: window.location.href };
+  if(navigator.share){
+    try { await navigator.share(shareData); } catch(e){}
+  } else {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      alert('링크가 복사됐어요.');
+    } catch(e){
+      alert('이 브라우저에서는 공유하기를 지원하지 않아요.');
+    }
+  }
 }
 
 async function signOut(){
