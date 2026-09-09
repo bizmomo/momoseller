@@ -69,7 +69,10 @@
   <!-- 로그인 후 화면 -->
   <div id="appView">
     <div class="card">
-      <h2>상품 정보</h2>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h2 style="margin:0;">상품 정보</h2>
+        <button type="button" class="mini-btn" onclick="startNewDraft()">새로 만들기</button>
+      </div>
       <div class="row" style="margin-bottom:14px;">
         <div>
           <label for="category">카테고리</label>
@@ -134,7 +137,7 @@
       <div id="aiGenControls" style="display:none;">
         <div class="field-block">
           <label for="aiGenCount">한 번에 몇 개 만들까요?</label>
-          <select id="aiGenCount" onchange="updateAiGenControls()">
+          <select id="aiGenCount" onchange="updateAiGenControls(); saveDraft();">
             <option value="1">1개</option>
           </select>
         </div>
@@ -205,13 +208,14 @@ function onLoggedIn(user){
   currentUser = user;
   document.getElementById('authView').style.display = 'none';
   document.getElementById('appView').style.display = 'block';
-  checkAiAccess();
+  checkAiAccess().then(loadDraft);
 }
 
 const AI_FREE_LIMIT = 3;
 const AI_MAX_BATCH = 5;
 let aiIsPro = false;
 let aiRemaining = 0;
+let currentResults = [];
 
 async function checkAiAccess(){
   const { data } = await sb.from('profiles').select('is_pro, ai_generations_used, ai_generations_limit').eq('id', currentUser.id).single();
@@ -385,6 +389,91 @@ function getSelectedMarkets(){
   return markets;
 }
 
+const DRAFT_KEY = 'momoseller_draft';
+
+function saveDraft(){
+  const draft = {
+    category: document.getElementById('category').value,
+    tone: document.getElementById('tone').value,
+    brand: document.getElementById('brand').value,
+    marketCoupang: document.getElementById('marketCoupang').checked,
+    marketStore: document.getElementById('marketStore').checked,
+    input: document.getElementById('input').value,
+    includeKeywords: document.getElementById('includeKeywords').value,
+    excludeKeywords: document.getElementById('excludeKeywords').value,
+    aiGenCount: document.getElementById('aiGenCount').value,
+    extraDescs: Array.from(document.querySelectorAll('.extra-desc')).map(el => el.value),
+    results: currentResults,
+  };
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+}
+
+function loadDraft(){
+  const raw = sessionStorage.getItem(DRAFT_KEY);
+  if(!raw) return;
+  let draft;
+  try{ draft = JSON.parse(raw); } catch(err){ return; }
+
+  document.getElementById('category').value = draft.category || '';
+  document.getElementById('tone').value = draft.tone || '친근하고 신뢰감 있게';
+  document.getElementById('brand').value = draft.brand || '';
+  document.getElementById('marketCoupang').checked = draft.marketCoupang !== false;
+  document.getElementById('marketStore').checked = draft.marketStore !== false;
+  document.getElementById('input').value = draft.input || '';
+  document.getElementById('includeKeywords').value = draft.includeKeywords || '';
+  document.getElementById('excludeKeywords').value = draft.excludeKeywords || '';
+
+  const countSelect = document.getElementById('aiGenCount');
+  if(draft.aiGenCount) countSelect.value = draft.aiGenCount;
+  updateAiGenControls();
+  (draft.extraDescs || []).forEach((val, i) => {
+    const el = document.querySelectorAll('.extra-desc')[i];
+    if(el) el.value = val;
+  });
+
+  if(Array.isArray(draft.results) && draft.results.length){
+    currentResults = [];
+    document.getElementById('aiResultsContainer').innerHTML = '';
+    document.getElementById('aiResultCard').style.display = 'block';
+    draft.results.forEach(r => {
+      renderAiResult(r.text, r.index, r.total, r.meta);
+      currentResults.push(r);
+    });
+  }
+}
+
+function startNewDraft(){
+  if(currentResults.length && !confirm('지금 만든 결과가 모두 사라져요. 새로 만들까요?')){
+    return;
+  }
+  sessionStorage.removeItem(DRAFT_KEY);
+  currentResults = [];
+
+  document.getElementById('category').value = '';
+  document.getElementById('tone').value = '친근하고 신뢰감 있게';
+  document.getElementById('brand').value = '';
+  document.getElementById('marketCoupang').checked = true;
+  document.getElementById('marketStore').checked = true;
+  document.getElementById('input').value = '';
+  document.getElementById('includeKeywords').value = '';
+  document.getElementById('excludeKeywords').value = '';
+  document.getElementById('genStatus').textContent = '';
+
+  document.getElementById('aiResultsContainer').innerHTML = '';
+  document.getElementById('aiResultCard').style.display = 'none';
+
+  document.getElementById('aiGenCount').value = '1';
+  updateAiGenControls();
+  document.getElementById('input').focus();
+}
+
+['category', 'tone', 'brand', 'input', 'includeKeywords', 'excludeKeywords'].forEach(id => {
+  document.getElementById(id).addEventListener('input', saveDraft);
+});
+document.getElementById('marketCoupang').addEventListener('change', saveDraft);
+document.getElementById('marketStore').addEventListener('change', saveDraft);
+document.getElementById('extraDescriptions').addEventListener('input', saveDraft);
+
 function copyText(text){
   navigator.clipboard.writeText(text);
 }
@@ -421,6 +510,7 @@ async function generateWithAI(){
   document.getElementById('aiResultsContainer').innerHTML = '';
   document.getElementById('aiResultCard').style.display = 'block';
   document.getElementById('aiResultStatus').textContent = '';
+  currentResults = [];
 
   for(let i = 0; i < count; i++){
     statusEl.textContent = count > 1
@@ -441,7 +531,10 @@ async function generateWithAI(){
     if(!aiIsPro && typeof data.remaining === 'number'){
       aiRemaining = data.remaining;
     }
-    renderAiResult(data.result, i, count, { input: inputs[i], category, tone, brand });
+    const meta = { input: inputs[i], category, tone, brand };
+    renderAiResult(data.result, i, count, meta);
+    currentResults.push({ text: data.result, index: i, total: count, meta });
+    saveDraft();
 
     if(i === count - 1){
       statusEl.textContent = '';
