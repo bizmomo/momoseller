@@ -278,10 +278,20 @@
 
   <div id="ordersTab" style="display:none;">
     <div class="card">
-      <div class="month-nav">
-        <button class="icon-btn" onclick="changeSavedOrdersMonth(-1)" aria-label="이전 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
-        <div class="month-label" id="savedOrdersMonthLabel">-</div>
-        <button class="icon-btn" onclick="changeSavedOrdersMonth(1)" aria-label="다음 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      <div class="tab-row" style="margin-bottom:0;">
+        <button class="tab-btn active" data-order-view="month" onclick="setSavedOrdersViewMode('month')">월별 보기</button>
+        <button class="tab-btn" data-order-view="all" onclick="setSavedOrdersViewMode('all')">전체 보기</button>
+      </div>
+      <div id="savedOrdersMonthNav">
+        <div class="month-nav" style="margin-top:14px;">
+          <button class="icon-btn" onclick="changeSavedOrdersMonth(-1)" aria-label="이전 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+          <div class="month-label" id="savedOrdersMonthLabel">-</div>
+          <button class="icon-btn" onclick="changeSavedOrdersMonth(1)" aria-label="다음 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+        </div>
+        <div class="field-block" style="margin-top:12px; margin-bottom:0;">
+          <input type="month" id="jumpToMonthInput">
+        </div>
+        <button class="secondary" onclick="jumpToSavedOrdersMonth()">선택한 달로 바로 이동</button>
       </div>
     </div>
 
@@ -290,7 +300,7 @@
         <h2 style="margin:0;">주문 목록</h2>
         <button class="mini-btn" id="addOrderBtn" onclick="toggleAddOrderForm()">+ 직접 입력</button>
       </div>
-      <div class="hint" style="margin-top:0; margin-bottom:12px;">이 달에 저장된 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.</div>
+      <div class="hint" style="margin-top:0; margin-bottom:12px;" id="savedOrderListHint">이 달에 저장된 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.</div>
       <div id="addOrderFormWrap" style="display:none; margin-bottom:18px; padding-bottom:18px; border-bottom:1px dashed var(--line);"></div>
       <div id="savedOrderListWrap"></div>
       <div class="hint" id="savedOrderListEmptyNote" style="display:none; text-align:center;">이 달에는 저장된 주문이 없어요.</div>
@@ -333,6 +343,7 @@ let unregisteredCostItems = [];
 let lastUnallocated = { adCost: 0, otherCost: 0 };
 let savedOrdersViewYear = null;
 let savedOrdersViewMonth = null;
+let savedOrdersViewMode = 'month';
 let addOrderFields = null;
 const ORDER_DRAFT_KEY = 'momoseller_order_draft';
 
@@ -1103,8 +1114,13 @@ async function saveOrdersToDb(orders){
   const { error } = await sb.from('settlement_orders').upsert(rows, { onConflict: 'user_id,platform,order_number,product_name,option_name' });
 
   if(statusEl){
-    statusEl.textContent = error ? '통계용 데이터 저장에 실패했어요. 인터넷 연결을 확인하고 다시 분석해주세요.' : `✓ 분석 페이지에서 볼 수 있도록 ${rows.length}건 저장했어요.`;
-    statusEl.style.color = error ? 'var(--error)' : 'var(--teal)';
+    if(error){
+      statusEl.textContent = '통계용 데이터 저장에 실패했어요. 인터넷 연결을 확인하고 다시 분석해주세요.';
+      statusEl.style.color = 'var(--error)';
+    } else {
+      statusEl.innerHTML = `✓ 주문 목록에서 볼 수 있도록 ${rows.length}건 저장했어요. <button type="button" class="mini-btn" style="margin-left:4px;" onclick="goToSavedOrdersForAnalysis()">주문 목록에서 보기</button>`;
+      statusEl.style.color = 'var(--teal)';
+    }
   }
   if(error) console.error('settlement_orders save failed', error);
 }
@@ -1522,15 +1538,56 @@ function changeSavedOrdersMonth(delta){
   renderSavedOrdersTab();
 }
 
-async function renderSavedOrdersTab(){
-  document.getElementById('savedOrdersMonthLabel').textContent = `${savedOrdersViewYear}년 ${savedOrdersViewMonth}월`;
+function jumpToSavedOrdersMonth(){
+  const val = document.getElementById('jumpToMonthInput').value;
+  if(!val) return;
+  const [y, m] = val.split('-').map(Number);
+  savedOrdersViewYear = y;
+  savedOrdersViewMonth = m;
+  renderSavedOrdersTab();
+}
 
-  const { start, end } = monthRangeISO(savedOrdersViewYear, savedOrdersViewMonth);
-  const orders = await fetchSavedOrdersInRange(start, end);
+function goToSavedOrdersForAnalysis(){
+  const dates = analyzedOrders.map(o => o.orderDate).filter(Boolean);
+  if(dates.length === 0) return;
+  const earliest = new Date(Math.min(...dates));
+  savedOrdersViewYear = earliest.getFullYear();
+  savedOrdersViewMonth = earliest.getMonth() + 1;
+  setSavedOrdersViewMode('month');
+  setPageTab('orders');
+}
+
+function setSavedOrdersViewMode(mode){
+  savedOrdersViewMode = mode;
+  document.querySelectorAll('.tab-btn[data-order-view]').forEach(b => b.classList.toggle('active', b.dataset.orderView === mode));
+  document.getElementById('savedOrdersMonthNav').style.display = mode === 'month' ? 'block' : 'none';
+  document.getElementById('savedOrderListHint').textContent = mode === 'all'
+    ? '지금까지 저장된 모든 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.'
+    : '이 달에 저장된 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.';
+  renderSavedOrdersTab();
+}
+
+async function fetchAllSavedOrders(){
+  const { data } = await sb.from('settlement_orders').select('*').eq('user_id', currentUser.id);
+  return data || [];
+}
+
+async function renderSavedOrdersTab(){
+  let orders;
+  if(savedOrdersViewMode === 'all'){
+    orders = await fetchAllSavedOrders();
+  } else {
+    document.getElementById('savedOrdersMonthLabel').textContent = `${savedOrdersViewYear}년 ${savedOrdersViewMonth}월`;
+    const { start, end } = monthRangeISO(savedOrdersViewYear, savedOrdersViewMonth);
+    orders = await fetchSavedOrdersInRange(start, end);
+  }
   orders.sort((a, b) => b.order_date.localeCompare(a.order_date));
   window._savedOrdersCache = orders;
 
-  document.getElementById('savedOrderListEmptyNote').style.display = orders.length === 0 ? 'block' : 'none';
+  const emptyNote = document.getElementById('savedOrderListEmptyNote');
+  emptyNote.style.display = orders.length === 0 ? 'block' : 'none';
+  emptyNote.textContent = savedOrdersViewMode === 'all' ? '저장된 주문이 아직 없어요.' : '이 달에는 저장된 주문이 없어요.';
+
   document.getElementById('savedOrderListWrap').innerHTML = orders.map(o => `
     <div class="order-card">
       <div id="savedOrderSummary-${o.id}" onclick="toggleSavedOrderEdit('${o.id}')">
@@ -1543,7 +1600,7 @@ async function renderSavedOrdersTab(){
 
 function savedOrderSummaryHtml(o){
   return `
-    <div class="order-card-top"><span>${escapeHtml(o.order_date.slice(5))}</span><span>${escapeHtml(PLATFORM_LABELS[o.platform] || o.platform)}</span></div>
+    <div class="order-card-top"><span>${escapeHtml(o.order_date)}</span><span>${escapeHtml(PLATFORM_LABELS[o.platform] || o.platform)}</span></div>
     <div class="order-card-name">${escapeHtml(o.product_name)}${o.option_name ? ' (' + escapeHtml(o.option_name) + ')' : ''}</div>
     <div class="order-card-nums"><span>매출<b>${formatWon(o.gross_sales)}</b></span><span>순이익<b>${formatWon(o.net_profit)}</b></span><span>마진율<b>${o.margin_rate.toFixed(1)}%</b></span></div>
   `;
