@@ -3,20 +3,56 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>분석 | 모모셀러</title>
+<title>통계 | 모모셀러</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <link href="shared.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="auth.js"></script>
+<style>
+  .tab-row{ display:flex; gap:6px; margin-bottom:14px; }
+  .tab-btn{ flex:1; text-align:center; padding:9px 4px; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:3px; cursor:pointer; }
+  .tab-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
+  .amt-neg{ color:var(--error); }
+  .summary-big{ text-align:center; padding:6px 0 20px; }
+  .summary-big .label{ font-size:13px; color:var(--ink-soft); margin-bottom:6px; }
+  .summary-big .value{ font-size:32px; font-weight:700; font-family:'Noto Serif KR', serif; color:var(--ink); }
+  details.adv-settings summary{ cursor:pointer; font-size:13.5px; color:var(--accent-deep); font-weight:500; padding:4px 0; list-style:none; }
+  details.adv-settings summary::-webkit-details-marker{ display:none; }
+  details.adv-settings summary::before{ content:'▸ '; }
+  details.adv-settings[open] summary::before{ content:'▾ '; }
+  details.adv-settings .adv-body{ padding-top:14px; }
+  .cost-row{ display:flex; justify-content:space-between; padding:8px 0; font-size:13.5px; border-bottom:1px solid var(--line); }
+  .cost-row:last-child{ border-bottom:none; }
+  .cost-row.total{ font-weight:700; border-top:1px solid var(--ink); margin-top:4px; padding-top:12px; }
+  .month-nav{ display:flex; align-items:center; justify-content:center; gap:24px; }
+  .month-nav .icon-btn{ width:36px; height:36px; }
+  .month-nav .month-label{ font-size:17px; font-weight:700; font-family:'Noto Serif KR', serif; min-width:110px; text-align:center; }
+  .compare-row{ display:flex; justify-content:space-between; align-items:flex-start; padding:12px 0; border-bottom:1px solid var(--line); }
+  .compare-row:last-child{ border-bottom:none; }
+  .compare-row .label{ font-size:13.5px; color:var(--ink-soft); padding-top:4px; }
+  .compare-row .value{ font-size:17px; font-weight:700; }
+  .compare-delta{ font-size:12px; margin-top:3px; color:var(--ink-soft); }
+  .compare-delta.up{ color:var(--teal); }
+  .compare-delta.down{ color:var(--error); }
+  .platform-row{ padding:14px 0; border-bottom:1px solid var(--line); }
+  .platform-row:last-child{ border-bottom:none; }
+  .platform-row-title{ font-size:14px; font-weight:700; margin-bottom:8px; }
+  .platform-row-nums{ display:flex; flex-wrap:wrap; gap:12px 22px; font-size:12px; color:var(--ink-soft); }
+  .platform-row-nums b{ color:var(--ink); font-size:13.5px; display:block; margin-top:2px; }
+  .bar-row{ margin-bottom:12px; }
+  .bar-row-top{ display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:5px; }
+  .bar-track{ background:#F1EFE6; border-radius:3px; height:10px; overflow:hidden; }
+  .bar-fill{ background:var(--ink); height:100%; }
+</style>
 </head>
 <body>
 <div class="wrap">
 
   <div class="masthead">
     <div>
-      <h1>분석</h1>
-      <p>매출 추이와 잘 팔리는 상품을 살펴보는 자리예요.</p>
+      <h1>통계</h1>
+      <p>정산 페이지에서 분석한 데이터를 월별로 모아 보여드려요.</p>
     </div>
     <div class="page-actions">
       <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
@@ -24,23 +60,92 @@
     </div>
   </div>
 
-  <div class="card">
-    <span class="soon-badge">연동 준비 중</span>
-    <h2>매출 분석</h2>
-    <p class="hint" style="margin-top:0;">
-      기간별(오늘/최근 7일/최근 30일/이번 달 등) 매출 추이 그래프, 플랫폼별·상품별·일자별 매출, 전월 대비 증감률을 여기서 보여드릴 예정이에요.
-    </p>
+  <div class="tab-row">
+    <button class="tab-btn active" data-tab="report" onclick="setMainTab('report')">리포트</button>
+    <button class="tab-btn" data-tab="period" onclick="setMainTab('period')">기간별</button>
   </div>
 
-  <div class="card">
-    <span class="soon-badge">연동 준비 중</span>
-    <h2>🏆 판매 TOP</h2>
-    <p class="hint" style="margin-top:0;">
-      잘 팔리는 상품 순위와, 상품을 누르면 쿠팡·스마트스토어별 판매량, 최근 7일/30일 판매량 같은 상세 정보를 보여드릴 예정이에요.
-    </p>
+  <div id="reportTab">
+    <div class="card">
+      <div class="month-nav">
+        <button class="icon-btn" onclick="changeMonth(-1)" aria-label="이전 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+        <div class="month-label" id="monthLabel">-</div>
+        <button class="icon-btn" onclick="changeMonth(1)" aria-label="다음 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      </div>
+    </div>
+
+    <div class="card" id="summaryCard">
+      <div class="summary-big">
+        <div class="label">매출</div>
+        <div class="value" id="statGross">₩0</div>
+        <div class="hint" id="statOrderCount" style="margin-top:2px;">0건</div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-label">정산 예정액</div><div class="stat-value" id="statSettlement">₩0</div></div>
+        <div class="stat-box"><div class="stat-label">총 수수료</div><div class="stat-value amt-neg" id="statFees">-₩0</div></div>
+      </div>
+      <div class="summary-big" style="padding-top:6px; padding-bottom:16px;">
+        <div class="label">순이익</div>
+        <div class="value" id="statProfit" style="color:var(--teal);">₩0</div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-label">마진율</div><div class="stat-value" id="statMargin">0.0%</div></div>
+        <div class="stat-box"><div class="stat-label">원가+광고/기타비용</div><div class="stat-value amt-neg" id="statCosts">-₩0</div></div>
+      </div>
+      <div class="hint" id="dataQualityNote" style="display:none; text-align:center; color:var(--error);"></div>
+      <div class="hint" id="emptyMonthNote" style="display:none; text-align:center;">이 달에는 저장된 정산 데이터가 없어요. 정산 페이지에서 먼저 엑셀을 분석해주세요.</div>
+
+      <details class="adv-settings" style="margin-top:16px; padding-top:14px; border-top:1px dashed var(--line);">
+        <summary>상세 보기</summary>
+        <div class="adv-body" id="summaryDetail"></div>
+      </details>
+    </div>
+
+    <div class="card" id="compareCard">
+      <h2>지난달 대비</h2>
+      <div class="compare-row">
+        <span class="label">매출</span>
+        <div style="text-align:right;">
+          <div class="value" id="compareGrossValue">₩0</div>
+          <div class="compare-delta" id="compareGrossDelta"></div>
+        </div>
+      </div>
+      <div class="compare-row">
+        <span class="label">순이익</span>
+        <div style="text-align:right;">
+          <div class="value" id="compareProfitValue">₩0</div>
+          <div class="compare-delta" id="compareProfitDelta"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="platformCard">
+      <h2>플랫폼별</h2>
+      <div id="platformBreakdown"></div>
+    </div>
   </div>
 
-  <div class="foot-note">두 가지 다 쿠팡윙·네이버 커머스API 연동이 끝나야 실제 데이터로 채워져요. 아직 API 키 발급 전이라 화면만 먼저 만들어뒀어요.</div>
+  <div id="periodTab" style="display:none;">
+    <div class="card">
+      <div class="tab-row">
+        <button class="tab-btn" data-months="3" onclick="setPeriodMonths(3)">3개월</button>
+        <button class="tab-btn active" data-months="6" onclick="setPeriodMonths(6)">6개월</button>
+        <button class="tab-btn" data-months="12" onclick="setPeriodMonths(12)">12개월</button>
+      </div>
+      <div class="field-block" style="margin-top:14px; margin-bottom:16px;">
+        <select id="periodMetric" onchange="renderPeriodChart()">
+          <option value="grossSales">매출</option>
+          <option value="settlementAmount">정산</option>
+          <option value="netProfit">순이익</option>
+          <option value="marginRate">마진율</option>
+        </select>
+      </div>
+      <div id="periodChart"></div>
+      <div class="hint" id="periodEmptyNote" style="display:none; text-align:center;">저장된 정산 데이터가 없어요.</div>
+    </div>
+  </div>
+
+  <div class="foot-note">정산 페이지에서 분석한 상품명·금액·수수료 정보만 모아서 보여드려요. 구매자 개인정보는 저장하지 않아요.</div>
 
 </div>
 
@@ -53,7 +158,183 @@
 </div></nav>
 
 <script>
-requireAuth(function(){});
+let currentUser = null;
+let viewYear, viewMonth;
+let periodMonths = 6;
+let periodData = [];
+
+const PLATFORM_LABELS = { coupang: '쿠팡', smartstore: '스마트스토어' };
+
+requireAuth(function(user){
+  currentUser = user;
+  const today = new Date();
+  viewYear = today.getFullYear();
+  viewMonth = today.getMonth() + 1;
+  renderReportTab();
+});
+
+function formatWon(n){
+  const rounded = Math.round(n || 0);
+  return (rounded < 0 ? '-₩' : '₩') + Math.abs(rounded).toLocaleString('ko-KR');
+}
+
+function monthRangeISO(year, month){
+  const start = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const end = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return { start, end };
+}
+
+async function fetchOrdersInRange(start, end){
+  const { data } = await sb.from('settlement_orders').select('*')
+    .eq('user_id', currentUser.id)
+    .gte('order_date', start)
+    .lte('order_date', end);
+  return data || [];
+}
+
+function aggregate(orders){
+  const grossSales = orders.reduce((s, o) => s + o.gross_sales, 0);
+  const settlementAmount = orders.reduce((s, o) => s + o.settlement_amount, 0);
+  const fees = orders.reduce((s, o) => s + o.marketplace_fee + o.shipping_fee + o.other_platform_fee, 0);
+  const productCost = orders.reduce((s, o) => s + o.product_cost + o.packaging_cost, 0);
+  const adCost = orders.reduce((s, o) => s + o.allocated_ad_cost, 0);
+  const otherCost = orders.reduce((s, o) => s + o.allocated_other_cost, 0);
+  const netProfit = orders.reduce((s, o) => s + o.net_profit, 0);
+  const marginRate = grossSales > 0 ? (netProfit / grossSales) * 100 : 0;
+  return { grossSales, settlementAmount, fees, productCost, adCost, otherCost, netProfit, marginRate, orderCount: orders.length };
+}
+
+function setMainTab(tab){
+  document.querySelectorAll('.tab-row .tab-btn[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('reportTab').style.display = tab === 'report' ? 'block' : 'none';
+  document.getElementById('periodTab').style.display = tab === 'period' ? 'block' : 'none';
+  if(tab === 'period') loadPeriodData();
+}
+
+function changeMonth(delta){
+  viewMonth += delta;
+  if(viewMonth > 12){ viewMonth = 1; viewYear++; }
+  if(viewMonth < 1){ viewMonth = 12; viewYear--; }
+  renderReportTab();
+}
+
+async function renderReportTab(){
+  document.getElementById('monthLabel').textContent = `${viewYear}년 ${viewMonth}월`;
+
+  const { start, end } = monthRangeISO(viewYear, viewMonth);
+  const orders = await fetchOrdersInRange(start, end);
+  const stat = aggregate(orders);
+
+  document.getElementById('emptyMonthNote').style.display = orders.length === 0 ? 'block' : 'none';
+
+  document.getElementById('statGross').textContent = formatWon(stat.grossSales);
+  document.getElementById('statOrderCount').textContent = `${stat.orderCount}건`;
+  document.getElementById('statSettlement').textContent = formatWon(stat.settlementAmount);
+  document.getElementById('statFees').textContent = formatWon(-stat.fees);
+  document.getElementById('statProfit').textContent = formatWon(stat.netProfit);
+  document.getElementById('statMargin').textContent = stat.marginRate.toFixed(1) + '%';
+  document.getElementById('statCosts').textContent = formatWon(-(stat.productCost + stat.adCost + stat.otherCost));
+
+  const missingCostCount = orders.filter(o => o.product_cost === 0 && o.packaging_cost === 0).length;
+  const noteEl = document.getElementById('dataQualityNote');
+  if(orders.length > 0 && missingCostCount > 0){
+    noteEl.style.display = 'block';
+    noteEl.textContent = `원가가 등록되지 않았을 수 있는 상품이 있어 순이익이 정확하지 않을 수 있어요.`;
+  } else {
+    noteEl.style.display = 'none';
+  }
+
+  document.getElementById('summaryDetail').innerHTML = `
+    <div class="cost-row"><span>총 수수료</span><span class="amt-neg">${formatWon(-stat.fees)}</span></div>
+    <div class="cost-row"><span>상품 원가</span><span class="amt-neg">${formatWon(-stat.productCost)}</span></div>
+    <div class="cost-row"><span>광고비</span><span class="amt-neg">${formatWon(-stat.adCost)}</span></div>
+    <div class="cost-row"><span>기타 비용</span><span class="amt-neg">${formatWon(-stat.otherCost)}</span></div>
+    <div class="cost-row total"><span>순이익</span><span>${formatWon(stat.netProfit)}</span></div>
+  `;
+
+  document.getElementById('platformBreakdown').innerHTML = ['coupang', 'smartstore'].map(p => {
+    const pStat = aggregate(orders.filter(o => o.platform === p));
+    return `
+      <div class="platform-row">
+        <div class="platform-row-title">${PLATFORM_LABELS[p]}</div>
+        <div class="platform-row-nums">
+          <span>매출<b>${formatWon(pStat.grossSales)}</b></span>
+          <span>정산<b>${formatWon(pStat.settlementAmount)}</b></span>
+          <span>순이익<b>${formatWon(pStat.netProfit)}</b></span>
+          <span>마진율<b>${pStat.marginRate.toFixed(1)}%</b></span>
+          <span>주문<b>${pStat.orderCount}건</b></span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  let prevYear = viewYear, prevMonth = viewMonth - 1;
+  if(prevMonth < 1){ prevMonth = 12; prevYear--; }
+  const prevRange = monthRangeISO(prevYear, prevMonth);
+  const prevOrders = await fetchOrdersInRange(prevRange.start, prevRange.end);
+  const prevStat = aggregate(prevOrders);
+
+  renderCompareRow('compareGross', stat.grossSales, prevStat.grossSales);
+  renderCompareRow('compareProfit', stat.netProfit, prevStat.netProfit);
+}
+
+function renderCompareRow(prefix, curr, prev){
+  document.getElementById(prefix + 'Value').textContent = formatWon(curr);
+  const deltaEl = document.getElementById(prefix + 'Delta');
+  if(prev === 0){
+    deltaEl.textContent = curr === 0 ? '' : '지난달 데이터 없음';
+    deltaEl.className = 'compare-delta';
+    return;
+  }
+  const diff = curr - prev;
+  const pct = (diff / Math.abs(prev)) * 100;
+  const arrow = diff >= 0 ? '▲' : '▼';
+  deltaEl.textContent = `지난달보다 ${arrow} ${Math.abs(diff).toLocaleString('ko-KR')}원 (${arrow} ${Math.abs(pct).toFixed(1)}%)`;
+  deltaEl.className = 'compare-delta ' + (diff >= 0 ? 'up' : 'down');
+}
+
+function setPeriodMonths(n){
+  periodMonths = n;
+  document.querySelectorAll('#periodTab .tab-btn[data-months]').forEach(b => b.classList.toggle('active', Number(b.dataset.months) === n));
+  loadPeriodData();
+}
+
+async function loadPeriodData(){
+  const months = [];
+  let y = viewYear, m = viewMonth;
+  for(let i = 0; i < periodMonths; i++){
+    months.unshift({ year: y, month: m });
+    m--; if(m < 1){ m = 12; y--; }
+  }
+  const first = monthRangeISO(months[0].year, months[0].month);
+  const last = monthRangeISO(months[months.length - 1].year, months[months.length - 1].month);
+  const orders = await fetchOrdersInRange(first.start, last.end);
+
+  periodData = months.map(({ year, month }) => {
+    const { start, end } = monthRangeISO(year, month);
+    const stat = aggregate(orders.filter(o => o.order_date >= start && o.order_date <= end));
+    return { label: `${year}.${String(month).padStart(2, '0')}`, grossSales: stat.grossSales, settlementAmount: stat.settlementAmount, netProfit: stat.netProfit, marginRate: stat.marginRate };
+  });
+
+  document.getElementById('periodEmptyNote').style.display = orders.length === 0 ? 'block' : 'none';
+  renderPeriodChart();
+}
+
+function renderPeriodChart(){
+  const metric = document.getElementById('periodMetric').value;
+  const maxVal = Math.max(...periodData.map(d => Math.abs(d[metric])), 1);
+  document.getElementById('periodChart').innerHTML = periodData.map(d => {
+    const pct = Math.min(100, (Math.abs(d[metric]) / maxVal) * 100);
+    const displayVal = metric === 'marginRate' ? d[metric].toFixed(1) + '%' : formatWon(d[metric]);
+    return `
+      <div class="bar-row">
+        <div class="bar-row-top"><span>${d.label}</span><span>${displayVal}</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;"></div></div>
+      </div>
+    `;
+  }).join('');
+}
 </script>
 </body>
 </html>

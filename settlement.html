@@ -78,7 +78,7 @@
   <div class="masthead">
     <div>
       <h1>정산 분석</h1>
-      <p>쿠팡·스마트스토어 주문/정산 엑셀을 올리면 매출, 수수료, 정산금액, 순이익, 마진율을 자동으로 정리해드려요. 업로드한 파일은 이 화면(브라우저) 안에서만 처리되고 어디로도 전송되지 않아요.</p>
+      <p>쿠팡·스마트스토어 주문/정산 엑셀을 올리면 매출, 수수료, 정산금액, 순이익, 마진율을 자동으로 정리해드려요. 엑셀 파일 자체는 이 화면(브라우저) 안에서만 처리되고 어디로도 전송되지 않고, 계산된 상품명·금액 정보만 분석 페이지에서 다시 볼 수 있도록 저장돼요.</p>
     </div>
     <div class="page-actions">
       <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
@@ -263,6 +263,7 @@
   <div class="card" id="actionCard" style="display:none;">
     <button class="primary" onclick="downloadResult()">엑셀 다운로드</button>
     <button class="secondary" onclick="resetAnalysis()">다시 분석</button>
+    <div class="hint" id="saveOrdersStatus" style="text-align:center;"></div>
   </div>
 
   <div class="foot-note">구매자 이름·연락처·주소 같은 개인정보는 읽지 않고, 정산 계산에 필요한 상품명·금액·수수료·주문일 정보만 사용해요.</div>
@@ -1015,6 +1016,49 @@ function analyzeFiles(){
   renderCostCard();
   renderResults();
   document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  saveOrdersToDb(analyzedOrders);
+}
+
+function formatDateISO(d){
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function saveOrdersToDb(orders){
+  const statusEl = document.getElementById('saveOrdersStatus');
+  const rows = orders.filter(o => o.orderDate).map(o => ({
+    user_id: currentUser.id,
+    platform: o.platform,
+    order_number: o.orderNumber || (o.productName + '|' + o.orderDate.getTime() + '|' + Math.random().toString(36).slice(2, 8)),
+    product_name: o.productName,
+    option_name: o.optionName || '',
+    order_date: formatDateISO(o.orderDate),
+    quantity: o.quantity,
+    product_amount: o.productAmount,
+    shipping_amount: o.shippingAmount,
+    gross_sales: o.grossSales,
+    marketplace_fee: o.marketplaceFee,
+    shipping_fee: o.shippingFee,
+    other_platform_fee: o.otherPlatformFee,
+    settlement_amount: o.settlementAmount,
+    product_cost: o.productCost,
+    packaging_cost: o.packagingCost,
+    allocated_ad_cost: o.allocatedAdCost,
+    allocated_other_cost: o.allocatedOtherCost,
+    net_profit: o.netProfit,
+    margin_rate: o.marginRate,
+    updated_at: new Date().toISOString(),
+  }));
+
+  if(rows.length === 0) return;
+  if(statusEl){ statusEl.textContent = '통계용 정산 데이터 저장 중...'; }
+
+  const { error } = await sb.from('settlement_orders').upsert(rows, { onConflict: 'user_id,platform,order_number,product_name,option_name' });
+
+  if(statusEl){
+    statusEl.textContent = error ? '' : `분석 페이지에서 볼 수 있도록 ${rows.length}건 저장했어요.`;
+  }
+  if(error) console.error('settlement_orders save failed', error);
 }
 
 function setPlatformFilter(p){
