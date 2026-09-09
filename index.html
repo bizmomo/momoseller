@@ -23,7 +23,7 @@
   <div class="masthead">
     <div>
       <h1>모모셀러</h1>
-      <p>AI로 만든 상품 정보를 내 계정에 저장할 수 있어요.</p>
+      <p>AI로 만든 상품 정보는 자동으로 내 계정에 저장돼요. 저장 기록에서 수정·삭제할 수 있어요.</p>
     </div>
     <div class="page-actions">
       <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
@@ -532,9 +532,10 @@ async function generateWithAI(){
       aiRemaining = data.remaining;
     }
     const meta = { input: inputs[i], category, tone, brand };
-    renderAiResult(data.result, i, count, meta);
+    const saveStatusEl = renderAiResult(data.result, i, count, meta);
     currentResults.push({ text: data.result, index: i, total: count, meta });
     saveDraft();
+    autoSaveToHistory(data.result, meta, saveStatusEl);
 
     if(i === count - 1){
       statusEl.textContent = '';
@@ -662,22 +663,18 @@ function renderAiResult(text, index, total, meta){
     block.appendChild(splitWrap);
   }
 
-  const saveBtn = document.createElement('button');
-  saveBtn.className = 'secondary';
-  saveBtn.textContent = '내 계정에 저장하기';
-  saveBtn.onclick = function(){
-    saveAiResultToHistory(text, meta, saveBtn);
-  };
-  block.appendChild(saveBtn);
+  const saveStatus = document.createElement('div');
+  saveStatus.className = 'hint';
+  saveStatus.style.marginTop = '8px';
+  block.appendChild(saveStatus);
 
   container.appendChild(block);
+  return saveStatus;
 }
 
-async function saveAiResultToHistory(text, meta, btn){
+async function autoSaveToHistory(text, meta, statusEl){
   if(!currentUser) return;
-  const original = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '저장 중...';
+  if(statusEl) statusEl.textContent = '기록에 저장하는 중...';
 
   const { error } = await sb.from('product_prompts').insert({
     user_id: currentUser.id,
@@ -688,8 +685,10 @@ async function saveAiResultToHistory(text, meta, btn){
     prompt_text: text
   });
 
-  btn.textContent = error ? '저장 실패' : '저장됐어요!';
-  setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1500);
+  if(statusEl){
+    statusEl.textContent = error ? '기록 저장에 실패했어요' : '✓ 기록에 자동으로 저장됐어요 (마이 > 저장 기록에서 수정·삭제할 수 있어요)';
+    statusEl.style.color = error ? 'var(--error)' : '';
+  }
 }
 </script>
 </body>
