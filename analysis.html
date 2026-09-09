@@ -44,6 +44,14 @@
   .bar-row-top{ display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:5px; }
   .bar-track{ background:#F1EFE6; border-radius:3px; height:10px; overflow:hidden; }
   .bar-fill{ background:var(--ink); height:100%; }
+  .product-row{ display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); }
+  .product-row:last-child{ border-bottom:none; }
+  .product-row .rank{ font-family:'Noto Serif KR', serif; font-weight:700; font-size:15px; color:var(--ink-soft); width:18px; flex-shrink:0; }
+  .product-row .pname{ flex:1; font-size:13.5px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .product-row .pnums{ text-align:right; flex-shrink:0; }
+  .product-row .pnums .main{ font-size:13.5px; font-weight:700; }
+  .product-row .pnums .sub{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
+  .product-row .pnums .sub.warn{ color:var(--error); }
 </style>
 </head>
 <body>
@@ -122,6 +130,19 @@
     <div class="card" id="platformCard">
       <h2>플랫폼별</h2>
       <div id="platformBreakdown"></div>
+    </div>
+
+    <div class="card" id="topProductsCard">
+      <h2>이 달의 인기 상품 TOP 5</h2>
+      <div id="topProductsList"></div>
+      <div class="hint" id="topProductsEmptyNote" style="display:none; text-align:center;">이 달에는 데이터가 없어요.</div>
+    </div>
+
+    <div class="card" id="riskProductsCard">
+      <h2>마진 주의 상품</h2>
+      <div class="hint" style="margin-top:0; margin-bottom:10px;">원가가 등록된 상품 중 마진율이 낮거나 손해인 상품이에요.</div>
+      <div id="riskProductsList"></div>
+      <div class="hint" id="riskProductsEmptyNote" style="display:none; text-align:center;"></div>
     </div>
   </div>
 
@@ -277,6 +298,70 @@ async function renderReportTab(){
 
   renderCompareRow('compareGross', stat.grossSales, prevStat.grossSales);
   renderCompareRow('compareProfit', stat.netProfit, prevStat.netProfit);
+
+  renderTopProducts(orders);
+  renderRiskProducts(orders);
+}
+
+function escapeHtml(s){
+  const div = document.createElement('div');
+  div.textContent = s == null ? '' : String(s);
+  return div.innerHTML;
+}
+
+function groupByProduct(orders){
+  const map = {};
+  orders.forEach(o => {
+    if(!map[o.product_name]){
+      map[o.product_name] = { name: o.product_name, quantity: 0, grossSales: 0, netProfit: 0, orderCount: 0, hasCost: false };
+    }
+    const g = map[o.product_name];
+    g.quantity += o.quantity;
+    g.grossSales += o.gross_sales;
+    g.netProfit += o.net_profit;
+    g.orderCount += 1;
+    if(o.product_cost > 0 || o.packaging_cost > 0) g.hasCost = true;
+  });
+  return Object.values(map).map(g => Object.assign(g, { marginRate: g.grossSales > 0 ? (g.netProfit / g.grossSales) * 100 : 0 }));
+}
+
+function renderTopProducts(orders){
+  const products = groupByProduct(orders).sort((a, b) => b.grossSales - a.grossSales).slice(0, 5);
+  document.getElementById('topProductsEmptyNote').style.display = products.length === 0 ? 'block' : 'none';
+  document.getElementById('topProductsList').innerHTML = products.map((p, i) => `
+    <div class="product-row">
+      <div class="rank">${i + 1}</div>
+      <div class="pname">${escapeHtml(p.name)}</div>
+      <div class="pnums">
+        <div class="main">${formatWon(p.grossSales)}</div>
+        <div class="sub">${p.quantity}개 · 순이익 ${formatWon(p.netProfit)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+const RISK_MARGIN_THRESHOLD = 10;
+
+function renderRiskProducts(orders){
+  const grouped = groupByProduct(orders);
+  const products = grouped.filter(p => p.hasCost && p.marginRate < RISK_MARGIN_THRESHOLD).sort((a, b) => a.marginRate - b.marginRate).slice(0, 5);
+  const emptyNote = document.getElementById('riskProductsEmptyNote');
+  if(products.length === 0){
+    const anyCost = grouped.some(p => p.hasCost);
+    emptyNote.style.display = 'block';
+    emptyNote.textContent = anyCost ? '마진이 낮은 상품이 없어요. 잘하고 계세요!' : '원가를 등록하면 마진이 낮은 상품을 알려드려요.';
+  } else {
+    emptyNote.style.display = 'none';
+  }
+  document.getElementById('riskProductsList').innerHTML = products.map(p => `
+    <div class="product-row">
+      <div class="pname">${escapeHtml(p.name)}</div>
+      <div class="pnums">
+        <div class="main ${p.netProfit < 0 ? 'amt-neg' : ''}">${formatWon(p.netProfit)}</div>
+        <div class="sub warn">마진율 ${p.marginRate.toFixed(1)}%</div>
+      </div>
+    </div>
+  `).join('');
 }
 
 function renderCompareRow(prefix, curr, prev){
