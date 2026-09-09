@@ -45,9 +45,11 @@
   .order-card-nums b{ color:var(--ink); font-size:13.5px; display:block; margin-top:2px; }
   .order-detail{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); font-size:12.5px; }
   .order-detail-row{ display:flex; justify-content:space-between; padding:3px 0; }
-  .cost-row{ display:flex; justify-content:space-between; padding:8px 0; font-size:13.5px; border-bottom:1px solid var(--line); }
+  .order-detail-row.total{ font-weight:700; border-top:1px solid var(--line); margin-top:4px; padding-top:6px; }
+  .cost-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; font-size:13.5px; border-bottom:1px solid var(--line); gap:8px; }
   .cost-row:last-child{ border-bottom:none; }
   .cost-row.total{ font-weight:700; border-top:1px solid var(--ink); margin-top:4px; padding-top:12px; }
+  .cost-row span:first-child{ flex:1; }
   .table-scroll{ display:none; overflow-x:auto; }
   .desktop-table{ width:100%; border-collapse:collapse; font-size:12.5px; white-space:nowrap; }
   .desktop-table th, .desktop-table td{ padding:8px 10px; border-bottom:1px solid var(--line); text-align:right; }
@@ -61,6 +63,13 @@
   .summary-big{ text-align:center; padding:6px 0 20px; }
   .summary-big .label{ font-size:13px; color:var(--ink-soft); margin-bottom:6px; }
   .summary-big .value{ font-size:32px; font-weight:700; font-family:'Noto Serif KR', serif; color:var(--ink); }
+  .cost-input-row{ display:flex; gap:8px; margin-top:8px; }
+  .cost-input-row > div{ flex:1; }
+  .cost-input-row label{ font-size:12px; margin-bottom:4px; }
+  .lock-box{ margin-top:10px; padding:12px; background:#FFF8E8; border:1px solid #E8D9A8; border-radius:4px; }
+  .lock-title{ font-size:13.5px; font-weight:500; color:var(--accent-deep); }
+  .lock-row{ display:flex; gap:8px; margin-top:8px; }
+  .lock-row input{ flex:1; }
 </style>
 </head>
 <body>
@@ -69,7 +78,7 @@
   <div class="masthead">
     <div>
       <h1>정산 분석</h1>
-      <p>쿠팡·스마트스토어 주문/정산 엑셀을 올리면 매출, 수수료, 정산금액을 자동으로 정리해드려요. 업로드한 파일은 이 화면(브라우저) 안에서만 처리되고 어디로도 전송되지 않아요.</p>
+      <p>쿠팡·스마트스토어 주문/정산 엑셀을 올리면 매출, 수수료, 정산금액, 순이익, 마진율을 자동으로 정리해드려요. 업로드한 파일은 이 화면(브라우저) 안에서만 처리되고 어디로도 전송되지 않아요.</p>
     </div>
     <div class="page-actions">
       <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
@@ -107,7 +116,7 @@
         <div class="hint" style="margin-top:0; margin-bottom:16px;">쿠팡은 정산 데이터에 실제 수수료가 없는 경우가 많아 이 비율로 예상 계산해요.</div>
 
         <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink); margin-bottom:12px; cursor:pointer;">
-          <input type="checkbox" id="storeOverride" onchange="toggleStoreOverride()" style="width:auto; cursor:pointer;">
+          <input type="checkbox" id="storeOverride" style="width:auto; cursor:pointer;">
           스마트스토어도 실제 값 대신 아래 비율로 직접 계산하기
         </label>
         <div class="row">
@@ -120,7 +129,17 @@
             <input type="number" id="storeShipRate" placeholder="예) 3.63" step="0.01" disabled>
           </div>
         </div>
-        <div class="hint" style="margin-bottom:0;">기본값은 엑셀 안의 실제 수수료·정산예정금액을 그대로 써요(가장 정확해요). 체크박스를 켜면 쿠팡처럼 비율로 직접 계산해요.</div>
+        <div class="hint" style="margin-top:0; margin-bottom:16px;">기본값은 엑셀 안의 실제 수수료·정산예정금액을 그대로 써요(가장 정확해요). 체크박스를 켜면 쿠팡처럼 비율로 직접 계산해요.</div>
+
+        <div class="field-block" style="margin-bottom:0;">
+          <label for="adAllocationMethod">광고비·기타비용 배분 방식</label>
+          <select id="adAllocationMethod">
+            <option value="revenue">매출 비율</option>
+            <option value="count">주문 건수 균등</option>
+            <option value="quantity">상품 수량 비율</option>
+            <option value="none">주문별로 나누지 않음</option>
+          </select>
+        </div>
       </div>
     </details>
 
@@ -144,12 +163,71 @@
       <div class="stat-box"><div class="stat-label">정산 예정액</div><div class="stat-value" id="sumSettlement">₩0</div></div>
       <div class="stat-box"><div class="stat-label">총 플랫폼 수수료</div><div class="stat-value amt-neg" id="sumFees">-₩0</div></div>
     </div>
-    <div class="hint" id="profitNotice" style="text-align:center;">상품 원가·광고비를 등록하면 실제 순이익·마진율도 볼 수 있어요 (다음 업데이트에서 추가돼요)</div>
+
+    <div class="summary-big" style="padding-top:4px; padding-bottom:16px;">
+      <div class="label">순이익</div>
+      <div class="value" id="sumProfit" style="color:var(--teal);">₩0</div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-label">마진율</div><div class="stat-value" id="sumMargin">0.0%</div></div>
+      <div class="stat-box"><div class="stat-label">원가+광고/기타비용</div><div class="stat-value amt-neg" id="sumCostsAndAd">-₩0</div></div>
+    </div>
+    <div class="hint" id="profitNotice" style="display:none; text-align:center; color:var(--error);"></div>
 
     <details class="adv-settings" style="margin-top:16px; padding-top:14px; border-top:1px dashed var(--line);">
       <summary>비용 상세</summary>
       <div class="adv-body" id="costDetail"></div>
     </details>
+  </div>
+
+  <div class="card" id="costCard" style="display:none;">
+    <h2>상품 원가</h2>
+    <div class="hint" id="costSummaryText" style="margin-top:0;"></div>
+    <div id="unregisteredCostList"></div>
+  </div>
+
+  <div class="card" id="expenseCard">
+    <h2>추가 비용</h2>
+    <div class="hint" style="margin-top:0;">분석한 주문일 기간에 해당하는 광고비·기타 지출을 등록하면 순이익 계산에 반영돼요.</div>
+    <div id="expenseList"></div>
+    <button type="button" class="mini-btn" onclick="toggleExpenseForm()">+ 비용 추가</button>
+    <div id="expenseForm" style="display:none; margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
+      <div class="row" style="margin-bottom:10px;">
+        <div>
+          <label for="expDate">날짜</label>
+          <input type="date" id="expDate">
+        </div>
+        <div>
+          <label for="expAmount">금액</label>
+          <input type="number" id="expAmount" placeholder="예) 100000">
+        </div>
+      </div>
+      <div class="field-block">
+        <label for="expCategory">비용 종류</label>
+        <select id="expCategory">
+          <option value="광고비">광고비</option>
+          <option value="원자재">원자재</option>
+          <option value="포장비">포장비</option>
+          <option value="택배비">택배비</option>
+          <option value="외주비">외주비</option>
+          <option value="기타">기타</option>
+        </select>
+      </div>
+      <div class="field-block">
+        <label for="expPlatform">플랫폼 (선택, 안 고르면 전체 공통 비용)</label>
+        <select id="expPlatform">
+          <option value="">전체 공통</option>
+          <option value="coupang">쿠팡</option>
+          <option value="smartstore">스마트스토어</option>
+        </select>
+      </div>
+      <div class="field-block" style="margin-bottom:0;">
+        <label for="expMemo">메모 (선택)</label>
+        <input type="text" id="expMemo" placeholder="예) 네이버 파워링크 광고">
+      </div>
+      <button type="button" class="primary" style="margin-top:14px;" onclick="saveExpense()">저장</button>
+      <div class="status" id="expenseStatus"></div>
+    </div>
   </div>
 
   <div class="card" id="orderListCard" style="display:none;">
@@ -162,6 +240,8 @@
         <option value="date_desc">최신순</option>
         <option value="gross_desc">매출 높은순</option>
         <option value="gross_asc">매출 낮은순</option>
+        <option value="profit_desc">순이익 높은순</option>
+        <option value="margin_asc">마진율 낮은순</option>
       </select>
     </div>
 
@@ -172,6 +252,7 @@
         <thead><tr>
           <th>주문일</th><th>상품명</th><th>판매처</th><th>수량</th><th>상품금액</th><th>배송비</th>
           <th>총매출</th><th>판매수수료</th><th>배송수수료</th><th>기타수수료</th><th>정산액</th>
+          <th>원가</th><th>광고비</th><th>기타비용</th><th>순이익</th><th>마진율</th>
         </tr></thead>
         <tbody id="desktopOrderBody"></tbody>
       </table>
@@ -197,13 +278,26 @@
 </div></nav>
 
 <script>
-requireAuth(function(){});
+let currentUser = null;
+requireAuth(function(user){
+  currentUser = user;
+  init();
+});
+
+async function init(){
+  await Promise.all([loadCostMap(), loadOtherExpenses()]);
+  renderExpenseList();
+}
 
 // ============ state ============
 let uploadedFiles = [];   // { id, name, platform, headerRow, aoa, rows, error, dateMin, dateMax, productCount }
 let analyzedOrders = [];  // flattened normalized rows across all valid files, filled in on analyze
 let platformFilter = 'all';
 let fileSeq = 0;
+let costMap = {};         // costKey -> { unitCost, packagingCost }
+let otherExpenses = [];   // rows from other_expenses for the current user
+let unregisteredCostItems = [];
+let lastUnallocated = { adCost: 0, otherCost: 0 };
 
 const PLATFORM_LABELS = { coupang: '쿠팡', smartstore: '스마트스토어', unknown: '미확인' };
 
@@ -276,7 +370,6 @@ function findHeaderRow(aoa){
     const row = aoa[i] || [];
     if(detectPlatform(row) !== 'unknown') return i;
   }
-  // fall back to first non-empty row so column-matching can still report what's missing
   for(let i = 0; i < Math.min(aoa.length, 20); i++){
     if((aoa[i] || []).some(c => c !== null && c !== undefined && String(c).trim() !== '')) return i;
   }
@@ -419,10 +512,135 @@ function getSettings(){
   };
 }
 
-function toggleStoreOverride(){
-  const on = document.getElementById('storeOverride').checked;
+document.getElementById('storeOverride').addEventListener('change', function(){
+  const on = this.checked;
   document.getElementById('storeRate').disabled = !on;
   document.getElementById('storeShipRate').disabled = !on;
+});
+
+// ============ product cost DB ============
+function costKey(platform, productName, optionName){
+  return platform + '|' + productName + '|' + (optionName || '');
+}
+
+async function loadCostMap(){
+  const { data } = await sb.from('product_costs').select('*').eq('user_id', currentUser.id);
+  costMap = {};
+  (data || []).forEach(row => {
+    costMap[costKey(row.platform, row.product_name, row.option_name)] = {
+      unitCost: row.unit_cost || 0, packagingCost: row.packaging_cost || 0,
+    };
+  });
+}
+
+async function saveCost(item, unitCost, packagingCost, btn){
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = '저장 중...';
+
+  const { error } = await sb.from('product_costs').upsert({
+    user_id: currentUser.id,
+    platform: item.platform,
+    product_name: item.productName,
+    option_name: item.optionName || '',
+    unit_cost: unitCost,
+    packaging_cost: packagingCost,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,platform,product_name,option_name' });
+
+  if(error){
+    btn.textContent = '저장 실패';
+    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1500);
+    return;
+  }
+
+  costMap[costKey(item.platform, item.productName, item.optionName)] = { unitCost, packagingCost };
+  btn.textContent = '저장됨!';
+
+  if(analyzedOrders.length){
+    applyCostsAndExpenses(analyzedOrders);
+    renderCostCard();
+    renderResults();
+  }
+}
+
+// ============ other expenses DB ============
+async function loadOtherExpenses(){
+  const { data } = await sb.from('other_expenses').select('*').eq('user_id', currentUser.id).order('expense_date', { ascending: false });
+  otherExpenses = data || [];
+}
+
+function toggleExpenseForm(){
+  const form = document.getElementById('expenseForm');
+  const willShow = form.style.display === 'none';
+  form.style.display = willShow ? 'block' : 'none';
+  if(willShow) document.getElementById('expDate').value = new Date().toISOString().slice(0, 10);
+}
+
+async function saveExpense(){
+  const dateVal = document.getElementById('expDate').value;
+  const amount = Number(document.getElementById('expAmount').value);
+  const category = document.getElementById('expCategory').value;
+  const platform = document.getElementById('expPlatform').value || null;
+  const memo = document.getElementById('expMemo').value.trim() || null;
+  const statusEl = document.getElementById('expenseStatus');
+
+  if(!dateVal || !amount){
+    statusEl.textContent = '날짜와 금액을 입력해주세요.';
+    statusEl.className = 'status err';
+    return;
+  }
+
+  statusEl.textContent = '저장 중...';
+  statusEl.className = 'status';
+
+  const { error } = await sb.from('other_expenses').insert({
+    user_id: currentUser.id, expense_date: dateVal, category, amount, platform, memo,
+  });
+  if(error){
+    statusEl.textContent = '저장 실패: ' + error.message;
+    statusEl.className = 'status err';
+    return;
+  }
+
+  document.getElementById('expAmount').value = '';
+  document.getElementById('expMemo').value = '';
+  statusEl.textContent = '';
+  await loadOtherExpenses();
+  renderExpenseList();
+  if(analyzedOrders.length){
+    applyCostsAndExpenses(analyzedOrders);
+    renderCostCard();
+    renderResults();
+  }
+}
+
+async function deleteExpense(id){
+  await sb.from('other_expenses').delete().eq('id', id);
+  await loadOtherExpenses();
+  renderExpenseList();
+  if(analyzedOrders.length){
+    applyCostsAndExpenses(analyzedOrders);
+    renderCostCard();
+    renderResults();
+  }
+}
+
+function renderExpenseList(){
+  const listEl = document.getElementById('expenseList');
+  if(otherExpenses.length === 0){
+    listEl.innerHTML = '<div class="hint" style="margin-top:0;">등록된 비용이 없어요.</div>';
+    return;
+  }
+  listEl.innerHTML = otherExpenses.map(e => `
+    <div class="cost-row">
+      <span>${escapeHtml(e.expense_date)} · ${escapeHtml(e.category)}${e.platform ? ' · ' + PLATFORM_LABELS[e.platform] : ''}${e.memo ? ' · ' + escapeHtml(e.memo) : ''}</span>
+      <span class="amt-neg" style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+        ${formatWon(-e.amount)}
+        <button type="button" class="file-del-btn" aria-label="삭제" data-expense-id="${e.id}" onclick="deleteExpense(this.dataset.expenseId)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+      </span>
+    </div>
+  `).join('');
 }
 
 // ============ upload handling ============
@@ -435,7 +653,11 @@ document.getElementById('fileInput').addEventListener('change', function(e){
 function addFile(file){
   const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
   const id = 'f' + (++fileSeq);
-  const entry = { id, name: file.name, platform: 'unknown', rows: [], error: null, dateMin: null, dateMax: null, productCount: 0 };
+  const entry = {
+    id, name: file.name, platform: 'unknown', rows: [], error: null,
+    dateMin: null, dateMax: null, productCount: 0,
+    needsPassword: false, encryptedBytes: null,
+  };
   uploadedFiles.push(entry);
 
   if(ext !== '.xlsx' && ext !== '.xls'){
@@ -448,13 +670,16 @@ function addFile(file){
   reader.onload = function(e){
     try{
       const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type: 'array', cellDates: true });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
-      loadFileRows(entry, aoa);
+      parseWorkbookBytes(entry, data);
     } catch(err){
-      console.error(err);
-      entry.error = '파일을 읽는 데 실패했어요. xlsx 파일이 맞는지 확인해주세요.';
+      if(String(err && err.message).indexOf('password-protected') !== -1){
+        entry.needsPassword = true;
+        entry.encryptedBytes = new Uint8Array(e.target.result);
+        entry.error = null;
+      } else {
+        console.error(err);
+        entry.error = '파일을 읽는 데 실패했어요. xlsx 파일이 맞는지 확인해주세요.';
+      }
     }
     renderFileList();
   };
@@ -464,6 +689,63 @@ function addFile(file){
   };
   reader.readAsArrayBuffer(file);
 
+  renderFileList();
+}
+
+function parseWorkbookBytes(entry, data){
+  const wb = XLSX.read(data, { type: 'array', cellDates: true });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
+  loadFileRows(entry, aoa);
+}
+
+function arrayBufferToBase64(buffer){
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for(let i = 0; i < bytes.length; i += chunkSize){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8Array(base64){
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for(let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function unlockFile(entry, passwordInputEl, statusEl){
+  const password = passwordInputEl.value;
+  if(!password){
+    statusEl.textContent = '비밀번호를 입력해주세요.';
+    statusEl.className = 'status err';
+    return;
+  }
+  statusEl.textContent = '여는 중...';
+  statusEl.className = 'status';
+
+  const fileBase64 = arrayBufferToBase64(entry.encryptedBytes.buffer);
+  const { data, error } = await sb.functions.invoke('decrypt-excel', { body: { fileBase64, password } });
+
+  passwordInputEl.value = '';
+
+  if(error || !data || data.error){
+    statusEl.textContent = (data && data.error) || ('열기 실패: ' + (await getInvokeErrorMessage(error)));
+    statusEl.className = 'status err';
+    return;
+  }
+
+  try{
+    const decryptedBytes = base64ToUint8Array(data.decryptedBase64);
+    entry.needsPassword = false;
+    entry.encryptedBytes = null;
+    parseWorkbookBytes(entry, decryptedBytes);
+  } catch(err){
+    console.error(err);
+    entry.error = '파일을 여는 데는 성공했지만 내용을 읽지 못했어요.';
+  }
   renderFileList();
 }
 
@@ -530,7 +812,7 @@ function renderFileList(){
     top.className = 'file-row-top';
     const nameEl = document.createElement('div');
     nameEl.className = 'file-row-name';
-    nameEl.textContent = (entry.error ? '✕ ' : '✓ ') + entry.name;
+    nameEl.textContent = (entry.needsPassword ? '🔒 ' : entry.error ? '✕ ' : '✓ ') + entry.name;
     top.appendChild(nameEl);
 
     const delBtn = document.createElement('button');
@@ -541,6 +823,47 @@ function renderFileList(){
     delBtn.onclick = () => removeFile(entry.id);
     top.appendChild(delBtn);
     row.appendChild(top);
+
+    if(entry.needsPassword){
+      const lockBox = document.createElement('div');
+      lockBox.className = 'lock-box';
+
+      const lockTitle = document.createElement('div');
+      lockTitle.className = 'lock-title';
+      lockTitle.textContent = '🔒 비밀번호가 설정된 엑셀입니다.';
+      lockBox.appendChild(lockTitle);
+
+      const lockHint = document.createElement('div');
+      lockHint.className = 'hint';
+      lockHint.style.marginTop = '2px';
+      lockHint.textContent = '비밀번호는 파일을 여는 데만 사용되며 저장하지 않아요.';
+      lockBox.appendChild(lockHint);
+
+      const lockRow = document.createElement('div');
+      lockRow.className = 'lock-row';
+      const pwInput = document.createElement('input');
+      pwInput.type = 'password';
+      pwInput.placeholder = '비밀번호';
+      lockRow.appendChild(pwInput);
+      const openBtn = document.createElement('button');
+      openBtn.type = 'button';
+      openBtn.className = 'mini-btn';
+      openBtn.textContent = '파일 열기';
+      lockRow.appendChild(openBtn);
+      lockBox.appendChild(lockRow);
+
+      const pwStatus = document.createElement('div');
+      pwStatus.className = 'status';
+      pwStatus.style.marginTop = '6px';
+      lockBox.appendChild(pwStatus);
+
+      openBtn.onclick = () => unlockFile(entry, pwInput, pwStatus);
+      pwInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') unlockFile(entry, pwInput, pwStatus); });
+
+      row.appendChild(lockBox);
+      listEl.appendChild(row);
+      return;
+    }
 
     const meta = document.createElement('div');
     meta.className = 'file-row-meta';
@@ -579,8 +902,75 @@ function escapeHtml(str){
   return div.innerHTML;
 }
 
+// ============ cost + expense application ============
+function applyCostsAndExpenses(orders){
+  const method = document.getElementById('adAllocationMethod').value;
+
+  const missingMap = new Map();
+  orders.forEach(o => {
+    const key = costKey(o.platform, o.productName, o.optionName);
+    const cost = costMap[key];
+    if(cost){
+      o.productCost = cost.unitCost * o.quantity;
+      o.packagingCost = cost.packagingCost * o.quantity;
+    } else {
+      o.productCost = 0;
+      o.packagingCost = 0;
+      missingMap.set(key, { platform: o.platform, productName: o.productName, optionName: o.optionName });
+    }
+    o.allocatedAdCost = 0;
+    o.allocatedOtherCost = 0;
+  });
+  unregisteredCostItems = Array.from(missingMap.values());
+
+  const dates = orders.map(o => o.orderDate).filter(Boolean);
+  const periodStart = dates.length ? new Date(Math.min(...dates)) : null;
+  const periodEnd = dates.length ? new Date(Math.max(...dates)) : null;
+
+  const relevantExpenses = periodStart && periodEnd
+    ? otherExpenses.filter(e => {
+        const d = new Date(e.expense_date);
+        return d >= periodStart && d <= new Date(periodEnd.getTime() + 86399999);
+      })
+    : [];
+
+  function allocate(bucketOrders, amount, isAd){
+    if(!bucketOrders.length || !amount) return;
+    const totalGross = bucketOrders.reduce((s, o) => s + o.grossSales, 0);
+    const totalQty = bucketOrders.reduce((s, o) => s + o.quantity, 0);
+    bucketOrders.forEach(o => {
+      let share;
+      if(method === 'count') share = amount / bucketOrders.length;
+      else if(method === 'quantity') share = totalQty > 0 ? amount * (o.quantity / totalQty) : amount / bucketOrders.length;
+      else share = totalGross > 0 ? amount * (o.grossSales / totalGross) : amount / bucketOrders.length;
+      if(isAd) o.allocatedAdCost += share; else o.allocatedOtherCost += share;
+    });
+  }
+
+  let unallocatedAdCost = 0, unallocatedOtherCost = 0;
+  relevantExpenses.forEach(e => {
+    const isAd = e.category === '광고비';
+    const amount = Math.abs(e.amount);
+    if(method === 'none'){
+      if(isAd) unallocatedAdCost += amount; else unallocatedOtherCost += amount;
+      return;
+    }
+    const bucket = e.platform ? orders.filter(o => o.platform === e.platform) : orders;
+    allocate(bucket, amount, isAd);
+  });
+  lastUnallocated = { adCost: unallocatedAdCost, otherCost: unallocatedOtherCost };
+
+  orders.forEach(o => {
+    o.netProfit = o.settlementAmount - o.productCost - o.packagingCost - o.allocatedAdCost - o.allocatedOtherCost;
+    o.marginRate = o.grossSales > 0 ? (o.netProfit / o.grossSales) * 100 : 0;
+  });
+}
+
 // ============ analyze ============
 function analyzeFiles(){
+  uploadedFiles.forEach(f => { if(!f.error || f.error.indexOf('확인하지 못했어요') === -1) reparseFile(f); });
+  renderFileList();
+
   analyzedOrders = [];
   uploadedFiles.forEach(f => {
     if(!f.error && f.rows.length) analyzedOrders = analyzedOrders.concat(f.rows);
@@ -594,12 +984,15 @@ function analyzeFiles(){
   }
   statusEl.textContent = '';
 
+  applyCostsAndExpenses(analyzedOrders);
+
   platformFilter = 'all';
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.platform === 'all'));
 
   document.getElementById('resultCard').style.display = 'block';
   document.getElementById('orderListCard').style.display = 'block';
   document.getElementById('actionCard').style.display = 'block';
+  renderCostCard();
   renderResults();
   document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -612,6 +1005,63 @@ function setPlatformFilter(p){
 
 function currentOrders(){
   return platformFilter === 'all' ? analyzedOrders : analyzedOrders.filter(o => o.platform === platformFilter);
+}
+
+function renderCostCard(){
+  const totalProducts = new Set(analyzedOrders.map(o => costKey(o.platform, o.productName, o.optionName))).size;
+  const missingCount = unregisteredCostItems.length;
+  const matchedCount = totalProducts - missingCount;
+
+  document.getElementById('costCard').style.display = 'block';
+  document.getElementById('costSummaryText').textContent = `자동 매칭 완료 ${matchedCount}개 · 원가 미등록 ${missingCount}개`;
+
+  const listEl = document.getElementById('unregisteredCostList');
+  listEl.innerHTML = '';
+  unregisteredCostItems.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'file-row';
+
+    const label = document.createElement('div');
+    label.className = 'file-row-name';
+    label.style.whiteSpace = 'normal';
+    label.textContent = item.productName + (item.optionName ? ` (${item.optionName})` : '') + ` · ${PLATFORM_LABELS[item.platform]}`;
+    row.appendChild(label);
+
+    const inputRow = document.createElement('div');
+    inputRow.className = 'cost-input-row';
+
+    const costDiv = document.createElement('div');
+    const costLabel = document.createElement('label');
+    costLabel.textContent = '원가';
+    costDiv.appendChild(costLabel);
+    const costInput = document.createElement('input');
+    costInput.type = 'number';
+    costInput.placeholder = '예) 500';
+    costDiv.appendChild(costInput);
+    inputRow.appendChild(costDiv);
+
+    const pkgDiv = document.createElement('div');
+    const pkgLabel = document.createElement('label');
+    pkgLabel.textContent = '포장비';
+    pkgDiv.appendChild(pkgLabel);
+    const pkgInput = document.createElement('input');
+    pkgInput.type = 'number';
+    pkgInput.placeholder = '예) 100';
+    pkgDiv.appendChild(pkgInput);
+    inputRow.appendChild(pkgDiv);
+
+    row.appendChild(inputRow);
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'mini-btn';
+    saveBtn.style.marginTop = '8px';
+    saveBtn.textContent = '저장';
+    saveBtn.onclick = () => saveCost(item, Number(costInput.value) || 0, Number(pkgInput.value) || 0, saveBtn);
+    row.appendChild(saveBtn);
+
+    listEl.appendChild(row);
+  });
 }
 
 function renderResults(){
@@ -629,16 +1079,43 @@ function renderResults(){
   const totalShipFee = orders.reduce((s, o) => s + o.shippingFee, 0);
   const totalOtherFee = orders.reduce((s, o) => s + o.otherPlatformFee, 0);
   const totalFees = totalMarketFee + totalShipFee + totalOtherFee;
+  const totalProductCost = orders.reduce((s, o) => s + o.productCost, 0);
+  const totalPackagingCost = orders.reduce((s, o) => s + o.packagingCost, 0);
+  const totalAdCost = orders.reduce((s, o) => s + o.allocatedAdCost, 0);
+  const totalOtherCost = orders.reduce((s, o) => s + o.allocatedOtherCost, 0);
+
+  const includeUnallocated = platformFilter === 'all';
+  const extraAd = includeUnallocated ? lastUnallocated.adCost : 0;
+  const extraOther = includeUnallocated ? lastUnallocated.otherCost : 0;
+
+  const totalNetProfit = orders.reduce((s, o) => s + o.netProfit, 0) - extraAd - extraOther;
+  const marginRate = totalGross > 0 ? (totalNetProfit / totalGross) * 100 : 0;
+  const totalCostsAndAd = totalProductCost + totalPackagingCost + totalAdCost + totalOtherCost + extraAd + extraOther;
 
   document.getElementById('sumGross').textContent = formatWon(totalGross);
   document.getElementById('sumSettlement').textContent = formatWon(totalSettlement);
   document.getElementById('sumFees').textContent = formatWon(-totalFees);
+  document.getElementById('sumProfit').textContent = formatWon(totalNetProfit);
+  document.getElementById('sumMargin').textContent = marginRate.toFixed(1) + '%';
+  document.getElementById('sumCostsAndAd').textContent = formatWon(-totalCostsAndAd);
+
+  const noticeEl = document.getElementById('profitNotice');
+  if(unregisteredCostItems.length > 0){
+    noticeEl.style.display = 'block';
+    noticeEl.textContent = `원가가 등록되지 않은 상품 ${unregisteredCostItems.length}개가 있어 순이익이 정확하지 않을 수 있어요.`;
+  } else {
+    noticeEl.style.display = 'none';
+  }
 
   document.getElementById('costDetail').innerHTML = `
     <div class="cost-row"><span>판매 수수료</span><span class="amt-neg">${formatWon(-totalMarketFee)}</span></div>
     <div class="cost-row"><span>배송 수수료</span><span class="amt-neg">${formatWon(-totalShipFee)}</span></div>
     <div class="cost-row"><span>기타 플랫폼 수수료</span><span class="amt-neg">${formatWon(-totalOtherFee)}</span></div>
-    <div class="cost-row total"><span>총 수수료</span><span class="amt-neg">${formatWon(-totalFees)}</span></div>
+    <div class="cost-row"><span>상품 원가</span><span class="amt-neg">${formatWon(-totalProductCost)}</span></div>
+    <div class="cost-row"><span>포장비</span><span class="amt-neg">${formatWon(-totalPackagingCost)}</span></div>
+    <div class="cost-row"><span>광고비</span><span class="amt-neg">${formatWon(-(totalAdCost + extraAd))}</span></div>
+    <div class="cost-row"><span>기타 비용</span><span class="amt-neg">${formatWon(-(totalOtherCost + extraOther))}</span></div>
+    <div class="cost-row total"><span>총 비용</span><span class="amt-neg">${formatWon(-(totalFees + totalCostsAndAd))}</span></div>
   `;
 
   renderOrderList();
@@ -655,6 +1132,8 @@ function renderOrderList(){
   orders.sort((a, b) => {
     if(sort === 'gross_desc') return b.grossSales - a.grossSales;
     if(sort === 'gross_asc') return a.grossSales - b.grossSales;
+    if(sort === 'profit_desc') return b.netProfit - a.netProfit;
+    if(sort === 'margin_asc') return a.marginRate - b.marginRate;
     const ta = a.orderDate ? a.orderDate.getTime() : 0;
     const tb = b.orderDate ? b.orderDate.getTime() : 0;
     return tb - ta;
@@ -664,7 +1143,7 @@ function renderOrderList(){
 
   const mobileList = document.getElementById('mobileOrderList');
   mobileList.innerHTML = '';
-  orders.forEach((o, idx) => {
+  orders.forEach((o) => {
     const card = document.createElement('div');
     card.className = 'order-card';
 
@@ -680,7 +1159,7 @@ function renderOrderList(){
 
     const nums = document.createElement('div');
     nums.className = 'order-card-nums';
-    nums.innerHTML = `<span>매출<b>${formatWon(o.grossSales)}</b></span><span>정산액<b>${formatWon(o.settlementAmount)}</b></span>`;
+    nums.innerHTML = `<span>매출<b>${formatWon(o.grossSales)}</b></span><span>순이익<b>${formatWon(o.netProfit)}</b></span><span>마진율<b>${o.marginRate.toFixed(1)}%</b></span>`;
     card.appendChild(nums);
 
     const detail = document.createElement('div');
@@ -692,7 +1171,12 @@ function renderOrderList(){
       <div class="order-detail-row"><span>판매수수료</span><span class="amt-neg">${formatWon(-o.marketplaceFee)}</span></div>
       <div class="order-detail-row"><span>배송수수료</span><span class="amt-neg">${formatWon(-o.shippingFee)}</span></div>
       <div class="order-detail-row"><span>기타수수료</span><span class="amt-neg">${formatWon(-o.otherPlatformFee)}</span></div>
-      <div class="order-detail-row"><span>정산예정</span><span><b>${formatWon(o.settlementAmount)}</b></span></div>
+      <div class="order-detail-row"><span>정산예정</span><span>${formatWon(o.settlementAmount)}</span></div>
+      <div class="order-detail-row"><span>상품원가</span><span class="amt-neg">${formatWon(-o.productCost)}</span></div>
+      <div class="order-detail-row"><span>포장비</span><span class="amt-neg">${formatWon(-o.packagingCost)}</span></div>
+      <div class="order-detail-row"><span>배분 광고비</span><span class="amt-neg">${formatWon(-o.allocatedAdCost)}</span></div>
+      <div class="order-detail-row"><span>배분 기타비용</span><span class="amt-neg">${formatWon(-o.allocatedOtherCost)}</span></div>
+      <div class="order-detail-row total"><span>순이익</span><span>${formatWon(o.netProfit)}</span></div>
     `;
     card.appendChild(detail);
 
@@ -714,6 +1198,11 @@ function renderOrderList(){
       <td class="amt-neg">${formatWon(-o.shippingFee)}</td>
       <td class="amt-neg">${formatWon(-o.otherPlatformFee)}</td>
       <td>${formatWon(o.settlementAmount)}</td>
+      <td class="amt-neg">${formatWon(-o.productCost - o.packagingCost)}</td>
+      <td class="amt-neg">${formatWon(-o.allocatedAdCost)}</td>
+      <td class="amt-neg">${formatWon(-o.allocatedOtherCost)}</td>
+      <td>${formatWon(o.netProfit)}</td>
+      <td>${o.marginRate.toFixed(1)}%</td>
     </tr>
   `).join('');
 }
@@ -725,6 +1214,7 @@ function resetAnalysis(){
   document.getElementById('resultCard').style.display = 'none';
   document.getElementById('orderListCard').style.display = 'none';
   document.getElementById('actionCard').style.display = 'none';
+  document.getElementById('costCard').style.display = 'none';
   document.getElementById('uploadStatus').textContent = '';
   document.getElementById('uploadCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -737,6 +1227,11 @@ function downloadResult(){
   const totalGross = orders.reduce((s, o) => s + o.grossSales, 0);
   const totalSettlement = orders.reduce((s, o) => s + o.settlementAmount, 0);
   const totalFees = orders.reduce((s, o) => s + o.marketplaceFee + o.shippingFee + o.otherPlatformFee, 0);
+  const totalProductCost = orders.reduce((s, o) => s + o.productCost + o.packagingCost, 0);
+  const totalAdCost = orders.reduce((s, o) => s + o.allocatedAdCost, 0) + lastUnallocated.adCost;
+  const totalOtherCost = orders.reduce((s, o) => s + o.allocatedOtherCost, 0) + lastUnallocated.otherCost;
+  const totalNetProfit = orders.reduce((s, o) => s + o.netProfit, 0) - lastUnallocated.adCost - lastUnallocated.otherCost;
+  const marginRate = totalGross > 0 ? (totalNetProfit / totalGross) * 100 : 0;
   const dates = orders.map(o => o.orderDate).filter(Boolean);
   const period = dates.length
     ? `${formatDateFull(new Date(Math.min(...dates)))} ~ ${formatDateFull(new Date(Math.max(...dates)))}`
@@ -749,19 +1244,26 @@ function downloadResult(){
     ['총매출', totalGross],
     ['정산예정액', totalSettlement],
     ['플랫폼수수료', -totalFees],
+    ['상품원가(포장비포함)', -totalProductCost],
+    ['광고비', -totalAdCost],
+    ['기타비용', -totalOtherCost],
+    ['순이익', totalNetProfit],
+    ['마진율(%)', Number(marginRate.toFixed(1))],
   ];
   const summaryWs = XLSX.utils.aoa_to_sheet(summaryAoa);
-  summaryWs['!cols'] = [{ wch: 16 }, { wch: 24 }];
+  summaryWs['!cols'] = [{ wch: 20 }, { wch: 24 }];
 
-  const orderHeader = ['주문일', '상품명', '판매처', '수량', '상품금액', '배송비', '총매출', '판매수수료', '배송수수료', '기타수수료', '정산액'];
+  const orderHeader = ['주문일', '상품명', '판매처', '수량', '상품금액', '배송비', '총매출', '판매수수료', '배송수수료', '기타수수료', '정산액', '상품원가', '포장비', '배분광고비', '배분기타비용', '순이익', '마진율(%)'];
   const orderAoa = [orderHeader].concat(orders.map(o => [
     o.orderDate ? formatDateFull(o.orderDate) : '',
     o.productName, PLATFORM_LABELS[o.platform], o.quantity,
     o.productAmount, o.shippingAmount, o.grossSales,
     -o.marketplaceFee, -o.shippingFee, -o.otherPlatformFee, o.settlementAmount,
+    -o.productCost, -o.packagingCost, -o.allocatedAdCost, -o.allocatedOtherCost,
+    o.netProfit, Number(o.marginRate.toFixed(1)),
   ]));
   const orderWs = XLSX.utils.aoa_to_sheet(orderAoa);
-  const moneyCols = [4, 5, 6, 7, 8, 9, 10];
+  const moneyCols = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
   for(let r = 1; r <= orders.length; r++){
     moneyCols.forEach(c => {
       const addr = XLSX.utils.encode_cell({ r, c });
@@ -769,11 +1271,30 @@ function downloadResult(){
     });
   }
   orderWs['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(orderHeader.length - 1)}${orders.length + 1}` };
-  orderWs['!cols'] = [{ wch: 12 }, { wch: 30 }, { wch: 10 }, { wch: 6 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+  orderWs['!cols'] = orderHeader.map(() => ({ wch: 13 }));
+  orderWs['!cols'][1] = { wch: 30 };
+
+  const costHeader = ['플랫폼', '상품명', '옵션명', '원가', '포장비'];
+  const costAoa = [costHeader].concat(Object.keys(costMap).map(key => {
+    const [platform, productName, optionName] = key.split('|');
+    const c = costMap[key];
+    return [PLATFORM_LABELS[platform] || platform, productName, optionName || '', c.unitCost, c.packagingCost];
+  }));
+  const costWs = XLSX.utils.aoa_to_sheet(costAoa);
+  costWs['!cols'] = [{ wch: 12 }, { wch: 30 }, { wch: 16 }, { wch: 10 }, { wch: 10 }];
+
+  const expenseHeader = ['날짜', '비용종류', '금액', '플랫폼', '메모'];
+  const expenseAoa = [expenseHeader].concat(otherExpenses.map(e => [
+    e.expense_date, e.category, e.amount, e.platform ? PLATFORM_LABELS[e.platform] : '전체 공통', e.memo || '',
+  ]));
+  const expenseWs = XLSX.utils.aoa_to_sheet(expenseAoa);
+  expenseWs['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 30 }];
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, summaryWs, '정산요약');
   XLSX.utils.book_append_sheet(wb, orderWs, '주문상세');
+  XLSX.utils.book_append_sheet(wb, costWs, '원가관리');
+  XLSX.utils.book_append_sheet(wb, expenseWs, '기타지출');
 
   const today = new Date();
   const fname = `모모셀러_정산_${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}.xlsx`;
