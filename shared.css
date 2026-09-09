@@ -16,7 +16,7 @@ body{
   background: var(--bg);
   color: var(--ink);
   font-family: 'Noto Sans KR', system-ui, sans-serif;
-  padding: 28px 14px 116px;
+  padding: 28px 20px 116px;
 }
 .wrap{ max-width: 640px; margin: 0 auto; }
 .masthead{ margin-bottom: 20px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
@@ -25,11 +25,11 @@ body{
 
 .page-actions{ display:flex; gap:8px; flex-shrink:0; }
 .icon-btn{
-  width:36px; height:36px; display:flex; align-items:center; justify-content:center;
-  border:1px solid var(--line); background:#fff; border-radius:50%;
+  width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+  border:none; background:none; padding:0;
   cursor:pointer; color:var(--ink-soft);
 }
-.icon-btn:hover{ border-color:var(--accent); color:var(--accent-deep); }
+.icon-btn:hover{ color:var(--accent-deep); }
 
 .card{
   position: relative;
