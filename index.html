@@ -103,7 +103,7 @@
         <label for="input">상품 설명 (대충 적어도 돼요)</label>
         <textarea id="input" style="min-height:84px;" placeholder="예) 겨울에 입는 두꺼운 기모 후드티, 남녀공용, 색은 검정 회색 베이지 3가지, 원단 도톰함"></textarea>
       </div>
-      <button class="primary" onclick="generatePrompt()">프롬프트 만들기</button>
+      <button class="secondary" style="padding:9px 14px; font-size:13.5px;" onclick="generatePrompt()">무료 프롬프트 만들기</button>
       <div id="aiGenControls" style="display:none; margin-top:14px;">
         <div class="field-block">
           <label for="aiGenCount">한 번에 몇 개 만들까요?</label>
@@ -111,7 +111,8 @@
             <option value="1">1개</option>
           </select>
         </div>
-        <button class="secondary" id="aiGenBtn" onclick="generateWithAI()">✨ AI로 만들기</button>
+        <div id="extraDescriptions"></div>
+        <button class="primary" id="aiGenBtn" onclick="generateWithAI()">✨ AI로 만들기</button>
       </div>
       <div class="status" id="genStatus"></div>
 
@@ -232,10 +233,37 @@ function updateAiGenControls(){
   countSelect.disabled = false;
   btn.disabled = false;
   const selectedCount = parseInt(countSelect.value, 10);
+  renderExtraDescriptions(selectedCount);
   const countLabel = selectedCount > 1 ? `${selectedCount}개 ` : '';
   btn.textContent = aiIsPro
     ? `✨ AI로 ${countLabel}만들기 (Pro)`
     : `✨ AI로 ${countLabel}만들기 (무료 ${aiRemaining}회 남음)`;
+}
+
+function renderExtraDescriptions(count){
+  const container = document.getElementById('extraDescriptions');
+  const needed = Math.max(0, count - 1);
+
+  while(container.children.length > needed){
+    container.removeChild(container.lastElementChild);
+  }
+  while(container.children.length < needed){
+    const idx = container.children.length + 2;
+    const block = document.createElement('div');
+    block.className = 'field-block';
+
+    const label = document.createElement('label');
+    label.textContent = `상품 설명 ${idx}`;
+    block.appendChild(label);
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'extra-desc';
+    textarea.style.minHeight = '84px';
+    textarea.placeholder = `상품 ${idx}에 대한 설명을 적어주세요`;
+    block.appendChild(textarea);
+
+    container.appendChild(block);
+  }
 }
 
 const CHARGE_TIERS = { 10: 500, 100: 4900, 1000: 48000 };
@@ -444,7 +472,6 @@ async function saveToHistory(){
 }
 
 async function generateWithAI(){
-  const input = document.getElementById('input').value.trim();
   const category = document.getElementById('category').value;
   const tone = document.getElementById('tone').value;
   const brand = document.getElementById('brand').value.trim();
@@ -453,8 +480,11 @@ async function generateWithAI(){
   const countSelect = document.getElementById('aiGenCount');
   const count = parseInt(countSelect.value, 10) || 1;
 
-  if(!input){
-    statusEl.textContent = '상품 설명을 먼저 적어주세요.';
+  const descEls = [document.getElementById('input'), ...document.querySelectorAll('.extra-desc')].slice(0, count);
+  const inputs = descEls.map(el => el.value.trim());
+
+  if(inputs.some(v => !v)){
+    statusEl.textContent = '상품 설명을 모두 입력해주세요.';
     statusEl.className = 'status err';
     return;
   }
@@ -473,7 +503,7 @@ async function generateWithAI(){
     statusEl.className = 'status';
 
     const { data, error } = await sb.functions.invoke('generate-listing', {
-      body: { input, category, tone, brand }
+      body: { input: inputs[i], category, tone, brand }
     });
 
     if(error || !data || data.error){
@@ -504,7 +534,7 @@ function renderAiResult(text, index, total){
     const label = document.createElement('div');
     label.className = 'hint';
     label.style.marginTop = '0';
-    label.textContent = `결과 ${index + 1} / ${total}`;
+    label.textContent = `상품 ${index + 1} 결과`;
     block.appendChild(label);
   }
 
