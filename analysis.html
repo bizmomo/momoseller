@@ -218,12 +218,17 @@ function aggregate(orders){
   const grossSales = orders.reduce((s, o) => s + o.gross_sales, 0);
   const settlementAmount = orders.reduce((s, o) => s + o.settlement_amount, 0);
   const fees = orders.reduce((s, o) => s + o.marketplace_fee + o.shipping_fee + o.other_platform_fee, 0);
+  const shippingFeeTotal = orders.reduce((s, o) => s + o.shipping_fee, 0);
   const productCost = orders.reduce((s, o) => s + o.product_cost + o.packaging_cost, 0);
   const adCost = orders.reduce((s, o) => s + o.allocated_ad_cost, 0);
   const otherCost = orders.reduce((s, o) => s + o.allocated_other_cost, 0);
   const netProfit = orders.reduce((s, o) => s + o.net_profit, 0);
   const marginRate = grossSales > 0 ? (netProfit / grossSales) * 100 : 0;
-  return { grossSales, settlementAmount, fees, productCost, adCost, otherCost, netProfit, marginRate, orderCount: orders.length };
+  const orderCount = orders.length;
+  const effectiveFeeRate = grossSales > 0 ? (fees / grossSales) * 100 : 0;
+  const avgOrderValue = orderCount > 0 ? grossSales / orderCount : 0;
+  const avgProfit = orderCount > 0 ? netProfit / orderCount : 0;
+  return { grossSales, settlementAmount, fees, shippingFeeTotal, productCost, adCost, otherCost, netProfit, marginRate, orderCount, effectiveFeeRate, avgOrderValue, avgProfit };
 }
 
 function setMainTab(tab){
@@ -268,10 +273,14 @@ async function renderReportTab(){
 
   document.getElementById('summaryDetail').innerHTML = `
     <div class="cost-row"><span>총 수수료</span><span class="amt-neg">${formatWon(-stat.fees)}</span></div>
+    <div class="cost-row"><span>· 배송비</span><span class="amt-neg">${formatWon(-stat.shippingFeeTotal)}</span></div>
+    <div class="cost-row"><span>실효 수수료율</span><span>${stat.effectiveFeeRate.toFixed(1)}%</span></div>
     <div class="cost-row"><span>상품 원가</span><span class="amt-neg">${formatWon(-stat.productCost)}</span></div>
     <div class="cost-row"><span>광고비</span><span class="amt-neg">${formatWon(-stat.adCost)}</span></div>
     <div class="cost-row"><span>기타 비용</span><span class="amt-neg">${formatWon(-stat.otherCost)}</span></div>
     <div class="cost-row total"><span>순이익</span><span>${formatWon(stat.netProfit)}</span></div>
+    <div class="cost-row"><span>객단가(평균 주문금액)</span><span>${formatWon(stat.avgOrderValue)}</span></div>
+    <div class="cost-row"><span>평균 순이익(건당)</span><span>${formatWon(stat.avgProfit)}</span></div>
   `;
 
   document.getElementById('platformBreakdown').innerHTML = ['coupang', 'smartstore'].map(p => {
