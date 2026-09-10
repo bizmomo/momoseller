@@ -13,10 +13,33 @@
 <style>
   .upload-add{
     display:flex; align-items:center; justify-content:center; gap:8px;
-    border:1.5px dashed var(--line); border-radius:4px; padding:18px;
-    color:var(--accent-deep); font-size:14px; font-weight:500; cursor:pointer; background:#FAF8F1;
+    border:1.5px dashed var(--line); border-radius:4px; padding:14px; margin-top:10px;
+    color:var(--accent-deep); font-size:13.5px; font-weight:500; cursor:pointer; background:#FAF8F1;
   }
   .upload-add:hover{ border-color:var(--accent); }
+  .input-method-row{ display:flex; gap:10px; }
+  .input-method-card{
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+    border:1px solid var(--line); border-radius:4px; padding:16px 8px;
+    background:#fff; cursor:pointer; text-align:center;
+  }
+  .input-method-card:hover{ border-color:var(--accent); }
+  .input-method-card .im-icon{
+    width:36px; height:36px; border-radius:4px; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; margin-bottom:2px;
+  }
+  .im-icon-excel{ background:var(--accent); }
+  .im-icon-paste{ background:var(--ink); }
+  .input-method-card .im-label{ font-size:13px; font-weight:500; color:var(--ink); line-height:1.35; }
+  .input-method-card .im-sub{ font-size:11px; color:var(--ink-soft); }
+  .platform-logo{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:18px; height:18px; border-radius:50%; color:#fff; font-size:10px; font-weight:700;
+    margin-right:5px; vertical-align:-3px; flex-shrink:0;
+  }
+  .platform-logo.coupang{ background:var(--error); }
+  .platform-logo.smartstore{ background:var(--teal); }
+  .platform-logo.unknown{ background:var(--ink-soft); }
   .file-row{ border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-top:10px; background:#fff; }
   .file-row.selected{ border-color:var(--teal); background:#F3F8F7; }
   .file-row-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
@@ -114,22 +137,30 @@
     <div class="field-block" id="topStoreWrap">
       <label for="topStoreSelect">상점 선택</label>
       <select id="topStoreSelect" onchange="onTopStoreSelectChange()">
-        <option value="">제목 없이 저장</option>
+        <option value="">상점 없이 추가</option>
         <option value="__new__">+ 새 상점 추가</option>
       </select>
       <input type="text" id="topStoreNewInput" placeholder="새 상점 이름 입력" style="display:none; margin-top:8px;">
     </div>
 
-    <div class="upload-add" onclick="document.getElementById('fileInput').click()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-      <span>엑셀 파일 추가</span>
+    <div class="input-method-row">
+      <div class="input-method-card" onclick="document.getElementById('fileInput').click()">
+        <span class="im-icon im-icon-excel">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+        </span>
+        <span class="im-label">엑셀 파일 추가</span>
+        <span class="im-sub">스마트스토어, 쿠팡</span>
+      </div>
+      <div class="input-method-card" onclick="togglePasteForm()">
+        <span class="im-icon im-icon-paste">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></svg>
+        </span>
+        <span class="im-label">엑셀에서 복사해서<br>붙여넣기</span>
+      </div>
     </div>
     <input type="file" id="fileInput" accept=".xlsx,.xls" multiple style="display:none;">
 
-    <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-      <button type="button" class="mini-btn" onclick="togglePasteForm()">📋 엑셀에서 복사해서 붙여넣기</button>
-      <button type="button" class="mini-btn" id="addOrderBtn" onclick="toggleAddOrderForm()">✍️ 직접 입력으로 추가</button>
-    </div>
+    <div class="upload-add" id="addOrderBtn" onclick="toggleAddOrderForm()">+ 직접 입력으로 추가</div>
     <div id="pasteFormWrap" style="display:none; margin-top:10px;">
       <div class="hint" style="margin-top:0;">엑셀(또는 구글 시트)에서 제목행을 포함해서 표를 복사한 다음, 아래에 붙여넣어주세요.</div>
       <textarea id="pasteTextarea" rows="6" placeholder="여기에 붙여넣으세요" style="min-height:120px;"></textarea>
@@ -1114,7 +1145,8 @@ function renderFileList(){
     if(entry.error){
       meta.innerHTML = `<span class="err">${escapeHtml(entry.error)}</span>`;
     } else {
-      const badge = `<span class="platform-badge ${entry.platform}">${PLATFORM_LABELS[entry.platform]}</span>`;
+      const logoChar = entry.platform === 'coupang' ? 'C' : entry.platform === 'smartstore' ? 'N' : '?';
+      const badge = `<span class="platform-logo ${entry.platform}">${logoChar}</span><span class="platform-badge ${entry.platform}">${PLATFORM_LABELS[entry.platform]}</span>`;
       const period = entry.dateMin && entry.dateMax ? `기간 ${formatDateFull(entry.dateMin)} ~ ${formatDateFull(entry.dateMax)}` : '';
       meta.innerHTML = `${badge}주문 ${entry.rows.length}건${period ? ' · ' + period : ''}${entry.productCount ? ' · 상품 ' + entry.productCount + '개' : ''}`;
     }
@@ -1677,7 +1709,7 @@ async function refreshStoreOptions(){
 
   const topSel = document.getElementById('topStoreSelect');
   const prevTopValue = topSel.value;
-  topSel.innerHTML = '<option value="">제목 없이 저장</option>'
+  topSel.innerHTML = '<option value="">상점 없이 추가</option>'
     + savedReports.map(r => `<option value="${r.id}">${escapeHtml(r.title)}</option>`).join('')
     + '<option value="__new__">+ 새 상점 추가</option>';
   if(prevTopValue === '__new__' || savedReports.some(r => r.id === prevTopValue)) topSel.value = prevTopValue;
@@ -1700,7 +1732,7 @@ function resolveTopStoreSelection(){
 
 // resolves a { reportId, newTitle } store selection into a real report id -
 // reuses an existing id as-is, creates the report row now for a brand new
-// title, or returns null for "제목 없이 저장". shared by the excel/paste
+// title, or returns null for "상점 없이 추가". shared by the excel/paste
 // analyze+save flow and the 직접 입력 flow so both create at most one report
 // row per typed name instead of duplicating this insert-if-new logic.
 async function resolveReportId(storeSelection){
@@ -2202,7 +2234,7 @@ function toggleAddOrderForm(){
   const wrap = document.getElementById('addOrderFormWrap');
   const isOpening = wrap.style.display === 'none';
   wrap.style.display = isOpening ? 'block' : 'none';
-  document.getElementById('addOrderBtn').textContent = isOpening ? '취소' : '✍️ 직접 입력으로 추가';
+  document.getElementById('addOrderBtn').textContent = isOpening ? '취소' : '+ 직접 입력으로 추가';
   if(isOpening) document.getElementById('manualAddStatus').textContent = '';
 
   if(isOpening && !addOrderFields){
@@ -2274,7 +2306,7 @@ async function submitNewSavedOrder(){
   addOrderFields = null;
   document.getElementById('addOrderFormWrap').innerHTML = '';
   document.getElementById('addOrderFormWrap').style.display = 'none';
-  document.getElementById('addOrderBtn').textContent = '✍️ 직접 입력으로 추가';
+  document.getElementById('addOrderBtn').textContent = '+ 직접 입력으로 추가';
   document.getElementById('manualAddStatus').innerHTML = '✓ 저장했어요. <button type="button" class="mini-btn" onclick="goToSavedOrdersTab()">주문 목록에서 보기</button>';
   document.getElementById('manualAddStatus').style.color = 'var(--teal)';
   renderSavedOrdersTab();
