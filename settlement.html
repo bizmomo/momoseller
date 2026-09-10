@@ -39,6 +39,12 @@
   .tab-btn{ flex:1; text-align:center; padding:9px 4px; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:3px; cursor:pointer; }
   .tab-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
   .order-card{ border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:8px; background:#fff; cursor:pointer; }
+  .order-card.selected{ border-color:var(--teal); background:#F3F8F7; }
+  .mini-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); }
+  .bulk-edit-panel{ border:1px solid var(--teal); border-radius:4px; padding:12px 14px; margin-bottom:14px; background:#F3F8F7; }
+  .bulk-field-row{ display:flex; align-items:center; gap:8px; margin-top:8px; }
+  .bulk-field-row label{ flex:1; font-size:13px; }
+  .bulk-field-row input[type=number]{ width:110px; }
   .order-card-top{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink-soft); margin-bottom:4px; }
   .order-card-name{ font-size:13.5px; margin-bottom:8px; line-height:1.4; }
   .order-card-nums{ display:flex; gap:16px; font-size:12.5px; color:var(--ink-soft); }
@@ -278,7 +284,8 @@
   </div>
 
   <div class="card" id="actionCard" style="display:none;">
-    <button class="primary" onclick="downloadResult()">엑셀 다운로드</button>
+    <button class="primary" onclick="sendAnalyzedToOrderList()">주문 목록으로 보내기</button>
+    <button class="secondary" onclick="downloadResult()">엑셀 다운로드</button>
     <button class="secondary" onclick="resetAnalysis()">다시 분석</button>
     <div class="hint" id="saveOrdersStatus" style="text-align:center;"></div>
   </div>
@@ -304,12 +311,17 @@
     </div>
 
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; flex-wrap:wrap; gap:6px;">
         <h2 style="margin:0;">주문 목록</h2>
-        <button class="mini-btn" id="addOrderBtn" onclick="toggleAddOrderForm()">+ 직접 입력</button>
+        <div style="display:flex; gap:6px;">
+          <button class="mini-btn" id="selectAllBtn" onclick="selectAllVisibleOrders()" style="display:none;">전체 선택</button>
+          <button class="mini-btn" id="selectModeBtn" onclick="toggleSelectMode()">선택해서 일괄 수정</button>
+          <button class="mini-btn" id="addOrderBtn" onclick="toggleAddOrderForm()">+ 직접 입력</button>
+        </div>
       </div>
       <div class="hint" style="margin-top:0; margin-bottom:12px;" id="savedOrderListHint">이 달에 저장된 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.</div>
       <div id="addOrderFormWrap" style="display:none; margin-bottom:18px; padding-bottom:18px; border-bottom:1px dashed var(--line);"></div>
+      <div id="bulkEditPanel" class="bulk-edit-panel" style="display:none;"></div>
       <div id="savedOrderListWrap"></div>
       <div class="hint" id="savedOrderListEmptyNote" style="display:none; text-align:center;">이 달에는 저장된 주문이 없어요.</div>
     </div>
@@ -368,6 +380,16 @@ let savedOrdersViewMonth = null;
 let savedOrdersViewMode = 'month';
 let addOrderFields = null;
 const ORDER_DRAFT_KEY = 'momoseller_order_draft';
+
+let selectMode = false;
+let selectedOrderIds = new Set();
+const BULK_EDIT_FIELDS = [
+  { key: 'product_amount', label: '상품금액' },
+  { key: 'shipping_amount', label: '배송비 받은 금액' },
+  { key: 'marketplace_fee', label: '수수료' },
+  { key: 'product_cost', label: '원가' },
+  { key: 'courier_cost', label: '택배비' },
+];
 
 const PLATFORM_LABELS = { coupang: '쿠팡', smartstore: '스마트스토어', unknown: '미확인', manual: '직접입력' };
 
@@ -1229,6 +1251,11 @@ function analyzeFiles(){
   renderResults();
   document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
+  const saveStatusEl = document.getElementById('saveOrdersStatus');
+  if(saveStatusEl){ saveStatusEl.textContent = ''; }
+}
+
+function sendAnalyzedToOrderList(){
   saveOrdersToDb(analyzedOrders);
 }
 
@@ -1760,19 +1787,29 @@ async function renderSavedOrdersTab(){
   }
   orders.sort((a, b) => b.order_date.localeCompare(a.order_date));
   window._savedOrdersCache = orders;
+  selectedOrderIds = new Set(Array.from(selectedOrderIds).filter(id => orders.some(o => o.id === id)));
 
   const emptyNote = document.getElementById('savedOrderListEmptyNote');
   emptyNote.style.display = orders.length === 0 ? 'block' : 'none';
   emptyNote.textContent = savedOrdersViewMode === 'all' ? '저장된 주문이 아직 없어요.' : '이 달에는 저장된 주문이 없어요.';
 
   document.getElementById('savedOrderListWrap').innerHTML = orders.map(o => `
-    <div class="order-card">
-      <div id="savedOrderSummary-${o.id}" onclick="toggleSavedOrderEdit('${o.id}')">
-        ${savedOrderSummaryHtml(o)}
+    <div class="order-card${selectedOrderIds.has(o.id) ? ' selected' : ''}">
+      <div id="savedOrderSummary-${o.id}" onclick="${selectMode ? `toggleOrderSelect('${o.id}')` : `toggleSavedOrderEdit('${o.id}')`}" style="display:flex; align-items:flex-start; gap:10px;">
+        ${selectMode ? `<input type="checkbox" class="order-select-checkbox" data-id="${o.id}" style="pointer-events:none; margin-top:3px;" ${selectedOrderIds.has(o.id) ? 'checked' : ''}>` : ''}
+        <div style="flex:1; min-width:0;">${savedOrderSummaryHtml(o)}</div>
       </div>
       <div id="savedOrderEdit-${o.id}" style="display:none;"></div>
     </div>
   `).join('');
+
+  const selectAllBtn = document.getElementById('selectAllBtn');
+  if(selectMode && orders.length > 0){
+    const allSelected = orders.every(o => selectedOrderIds.has(o.id));
+    selectAllBtn.textContent = allSelected ? '전체 해제' : '전체 선택';
+  }
+
+  renderBulkEditPanel();
 }
 
 function savedOrderSummaryHtml(o){
@@ -1781,6 +1818,148 @@ function savedOrderSummaryHtml(o){
     <div class="order-card-name">${escapeHtml(o.product_name)}${o.option_name ? ' (' + escapeHtml(o.option_name) + ')' : ''}</div>
     <div class="order-card-nums"><span>매출<b>${formatWon(o.gross_sales)}</b></span><span>순이익<b>${formatWon(o.net_profit)}</b></span><span>마진율<b>${o.margin_rate.toFixed(1)}%</b></span></div>
   `;
+}
+
+function toggleSelectMode(){
+  selectMode = !selectMode;
+  selectedOrderIds.clear();
+  document.getElementById('selectModeBtn').textContent = selectMode ? '선택 취소' : '선택해서 일괄 수정';
+  document.getElementById('selectModeBtn').classList.toggle('active', selectMode);
+  document.getElementById('selectAllBtn').style.display = selectMode ? 'inline-block' : 'none';
+  document.getElementById('selectAllBtn').textContent = '전체 선택';
+  renderSavedOrdersTab();
+}
+
+function selectAllVisibleOrders(){
+  const cache = window._savedOrdersCache || [];
+  const allSelected = cache.length > 0 && cache.every(o => selectedOrderIds.has(o.id));
+  if(allSelected){
+    selectedOrderIds.clear();
+  } else {
+    cache.forEach(o => selectedOrderIds.add(o.id));
+  }
+  renderSavedOrdersTab();
+}
+
+function toggleOrderSelect(id){
+  if(selectedOrderIds.has(id)) selectedOrderIds.delete(id);
+  else selectedOrderIds.add(id);
+
+  const checkbox = document.querySelector(`.order-select-checkbox[data-id="${id}"]`);
+  if(checkbox){
+    checkbox.checked = selectedOrderIds.has(id);
+    const card = checkbox.closest('.order-card');
+    if(card) card.classList.toggle('selected', selectedOrderIds.has(id));
+  }
+
+  const cache = window._savedOrdersCache || [];
+  const allSelected = cache.length > 0 && cache.every(o => selectedOrderIds.has(o.id));
+  const selectAllBtn = document.getElementById('selectAllBtn');
+  if(selectAllBtn) selectAllBtn.textContent = allSelected ? '전체 해제' : '전체 선택';
+
+  renderBulkEditPanel();
+}
+
+function clearOrderSelection(){
+  selectedOrderIds.clear();
+  renderSavedOrdersTab();
+}
+
+function renderBulkEditPanel(){
+  const panel = document.getElementById('bulkEditPanel');
+  if(!panel) return;
+  const count = selectedOrderIds.size;
+
+  if(!selectMode || count === 0){
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="hint" style="margin-top:0;">체크한 항목만 선택한 ${count}건 전체에 같은 값으로 한번에 반영돼요.</div>
+    ${BULK_EDIT_FIELDS.map(f => `
+      <div class="bulk-field-row">
+        <input type="checkbox" id="bulkApply-${f.key}">
+        <label for="bulkApply-${f.key}">${f.label}</label>
+        <input type="number" id="bulkValue-${f.key}" placeholder="새 값" min="0">
+      </div>
+    `).join('')}
+    <div class="hint" id="bulkEditStatus" style="margin-top:8px;"></div>
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button type="button" class="primary" onclick="submitBulkEdit()">일괄 저장 (${count}건)</button>
+      <button type="button" class="secondary" onclick="clearOrderSelection()">선택 해제</button>
+    </div>
+  `;
+  panel.style.display = 'block';
+}
+
+async function submitBulkEdit(){
+  const statusEl = document.getElementById('bulkEditStatus');
+  const changes = BULK_EDIT_FIELDS.filter(f => document.getElementById(`bulkApply-${f.key}`).checked);
+  if(changes.length === 0){
+    statusEl.textContent = '변경할 항목을 체크해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  const values = {};
+  for(const f of changes){
+    const raw = document.getElementById(`bulkValue-${f.key}`).value;
+    const n = Number(raw);
+    if(raw === '' || isNaN(n) || n < 0){
+      statusEl.textContent = `${f.label}에 넣을 값을 입력해주세요.`;
+      statusEl.style.color = 'var(--error)';
+      return;
+    }
+    values[f.key] = n;
+  }
+
+  const ids = Array.from(selectedOrderIds);
+  const cache = window._savedOrdersCache || [];
+  statusEl.textContent = `${ids.length}건 저장하는 중...`;
+  statusEl.style.color = '';
+
+  const updates = ids.map(id => {
+    const existing = cache.find(o => o.id === id);
+    if(!existing) return null;
+    const merged = Object.assign({}, existing, values);
+    const grossSales = merged.product_amount + merged.shipping_amount;
+    const settlementAmount = grossSales - merged.marketplace_fee - (merged.shipping_fee || 0) - (merged.other_platform_fee || 0);
+    const netProfit = settlementAmount - merged.product_cost - (merged.packaging_cost || 0) - merged.courier_cost - (merged.allocated_ad_cost || 0) - (merged.allocated_other_cost || 0);
+    return {
+      id,
+      product_amount: merged.product_amount,
+      shipping_amount: merged.shipping_amount,
+      marketplace_fee: merged.marketplace_fee,
+      product_cost: merged.product_cost,
+      courier_cost: merged.courier_cost,
+      gross_sales: grossSales,
+      settlement_amount: settlementAmount,
+      net_profit: netProfit,
+      margin_rate: grossSales > 0 ? (netProfit / grossSales) * 100 : 0,
+      updated_at: new Date().toISOString(),
+    };
+  }).filter(Boolean);
+
+  const results = await Promise.all(updates.map(u => {
+    const { id, ...fields } = u;
+    return sb.from('settlement_orders').update(fields).eq('id', id);
+  }));
+
+  const failedCount = results.filter(r => r.error).length;
+  if(failedCount > 0){
+    statusEl.textContent = `${failedCount}건 저장에 실패했어요. 다시 시도해주세요.`;
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  selectMode = false;
+  selectedOrderIds.clear();
+  document.getElementById('selectModeBtn').textContent = '선택해서 일괄 수정';
+  document.getElementById('selectModeBtn').classList.remove('active');
+  document.getElementById('selectAllBtn').style.display = 'none';
+  renderSavedOrdersTab();
 }
 
 function buildLabeledInput(labelText, inputEl){
