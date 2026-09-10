@@ -228,6 +228,7 @@ function aggregate(orders){
   const fees = orders.reduce((s, o) => s + o.marketplace_fee + o.shipping_fee + o.other_platform_fee, 0);
   const shippingFeeTotal = orders.reduce((s, o) => s + o.shipping_fee, 0);
   const productCost = orders.reduce((s, o) => s + o.product_cost + o.packaging_cost, 0);
+  const courierCost = orders.reduce((s, o) => s + (o.courier_cost || 0), 0);
   const adCost = orders.reduce((s, o) => s + o.allocated_ad_cost, 0);
   const otherCost = orders.reduce((s, o) => s + o.allocated_other_cost, 0);
   const netProfit = orders.reduce((s, o) => s + o.net_profit, 0);
@@ -236,7 +237,7 @@ function aggregate(orders){
   const effectiveFeeRate = grossSales > 0 ? (fees / grossSales) * 100 : 0;
   const avgOrderValue = orderCount > 0 ? grossSales / orderCount : 0;
   const avgProfit = orderCount > 0 ? netProfit / orderCount : 0;
-  return { grossSales, settlementAmount, fees, shippingFeeTotal, productCost, adCost, otherCost, netProfit, marginRate, orderCount, effectiveFeeRate, avgOrderValue, avgProfit };
+  return { grossSales, settlementAmount, fees, shippingFeeTotal, productCost, courierCost, adCost, otherCost, netProfit, marginRate, orderCount, effectiveFeeRate, avgOrderValue, avgProfit };
 }
 
 function setMainTab(tab){
@@ -268,7 +269,7 @@ async function renderReportTab(){
   document.getElementById('statFees').textContent = formatWon(-stat.fees);
   document.getElementById('statProfit').textContent = formatWon(stat.netProfit);
   document.getElementById('statMargin').textContent = stat.marginRate.toFixed(1) + '%';
-  document.getElementById('statCosts').textContent = formatWon(-(stat.productCost + stat.adCost + stat.otherCost));
+  document.getElementById('statCosts').textContent = formatWon(-(stat.productCost + stat.courierCost + stat.adCost + stat.otherCost));
 
   const missingCostCount = orders.filter(o => o.product_cost === 0 && o.packaging_cost === 0).length;
   const noteEl = document.getElementById('dataQualityNote');
@@ -284,6 +285,7 @@ async function renderReportTab(){
     <div class="cost-row"><span>· 배송비</span><span class="amt-neg">${formatWon(-stat.shippingFeeTotal)}</span></div>
     <div class="cost-row"><span>실효 수수료율</span><span>${stat.effectiveFeeRate.toFixed(1)}%</span></div>
     <div class="cost-row"><span>상품 원가</span><span class="amt-neg">${formatWon(-stat.productCost)}</span></div>
+    <div class="cost-row"><span>택배비</span><span class="amt-neg">${formatWon(-stat.courierCost)}</span></div>
     <div class="cost-row"><span>광고비</span><span class="amt-neg">${formatWon(-stat.adCost)}</span></div>
     <div class="cost-row"><span>기타 비용</span><span class="amt-neg">${formatWon(-stat.otherCost)}</span></div>
     <div class="cost-row total"><span>순이익</span><span>${formatWon(stat.netProfit)}</span></div>
@@ -338,7 +340,7 @@ function groupByProduct(orders){
     g.grossSales += o.gross_sales;
     g.netProfit += o.net_profit;
     g.orderCount += 1;
-    if(o.product_cost > 0 || o.packaging_cost > 0) g.hasCost = true;
+    if(o.product_cost > 0 || o.packaging_cost > 0 || o.courier_cost > 0) g.hasCost = true;
   });
   return Object.values(map).map(g => Object.assign(g, { marginRate: g.grossSales > 0 ? (g.netProfit / g.grossSales) * 100 : 0 }));
 }
