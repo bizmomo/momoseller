@@ -43,8 +43,9 @@ body{
 .card h2{ font-family: 'Noto Serif KR', serif; font-size: 16px; margin: 0 0 12px; }
 
 label{ display:block; font-size: 13px; color: var(--ink-soft); margin-bottom: 6px; }
-input[type=email], input[type=password], input[type=text], input[type=number], input[type=month], select, textarea{
+input[type=email], input[type=password], input[type=text], input[type=number], input[type=date], input[type=month], select, textarea{
   width: 100%;
+  max-width: 100%;
   font-family: inherit;
   font-size: 14px;
   color: var(--ink);
@@ -53,9 +54,10 @@ input[type=email], input[type=password], input[type=text], input[type=number], i
   border-radius: 3px;
   padding: 10px 12px;
 }
+input[type=date], input[type=month]{ min-width: 0; }
 .field-block{ margin-bottom: 14px; }
 .row{ display:flex; gap: 10px; }
-.row > div{ flex:1; }
+.row > div{ flex:1; min-width: 0; }
 
 button.primary{
   width: 100%;
