@@ -101,7 +101,6 @@
   <div class="tab-row">
     <button class="tab-btn active" data-page-tab="upload" onclick="setPageTab('upload')">엑셀 업로드</button>
     <button class="tab-btn" data-page-tab="orders" onclick="setPageTab('orders')">주문 목록</button>
-    <button class="tab-btn" data-page-tab="reports" onclick="setPageTab('reports')">저장된 정산</button>
   </div>
 
   <div id="uploadTab">
@@ -308,12 +307,8 @@
 
   <div id="ordersTab" style="display:none;">
     <div class="card">
-      <div id="reportViewHeader" style="display:none;">
-        <button class="mini-btn" onclick="setPageTab('reports')">← 저장된 정산 목록으로</button>
-        <h2 style="margin:10px 0 0;" id="reportViewTitle"></h2>
-      </div>
       <div id="savedOrdersModeTabs" class="tab-row" style="margin-bottom:0;">
-        <button class="tab-btn active" data-order-view="month" onclick="setSavedOrdersViewMode('month')">월별 보기</button>
+        <button class="tab-btn active" data-order-view="month" onclick="setSavedOrdersViewMode('month')">기간별로 보기</button>
         <button class="tab-btn" data-order-view="all" onclick="setSavedOrdersViewMode('all')">전체 보기</button>
       </div>
       <div id="savedOrdersMonthNav">
@@ -326,6 +321,22 @@
           <select id="jumpToMonthInput"></select>
         </div>
         <button class="secondary" onclick="jumpToSavedOrdersMonth()">선택한 달로 바로 이동</button>
+        <div class="field-block" style="margin-top:16px; margin-bottom:0;">
+          <label>기간 직접 선택</label>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div id="rangeStartWrap" style="flex:1; min-width:0;"></div>
+            <span>~</span>
+            <div id="rangeEndWrap" style="flex:1; min-width:0;"></div>
+          </div>
+        </div>
+        <button class="secondary" onclick="applyCustomOrdersRange()">이 기간으로 보기</button>
+      </div>
+      <div class="field-block" id="storeFilterWrap" style="margin-top:16px; margin-bottom:0;">
+        <label for="storeFilterSelect">상점 (제목 붙여 저장한 정산)</label>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <select id="storeFilterSelect" onchange="applyStoreFilter()" style="flex:1; min-width:0;"></select>
+          <button type="button" class="mini-btn danger" id="deleteStoreBtn" style="display:none; flex-shrink:0;" onclick="deleteCurrentStoreFilter()">삭제</button>
+        </div>
       </div>
     </div>
 
@@ -343,15 +354,6 @@
       <div id="bulkEditPanel" class="bulk-edit-panel" style="display:none;"></div>
       <div id="savedOrderListWrap"></div>
       <div class="hint" id="savedOrderListEmptyNote" style="display:none; text-align:center;">이 달에는 저장된 주문이 없어요.</div>
-    </div>
-  </div>
-
-  <div id="reportsTab" style="display:none;">
-    <div class="card">
-      <h2>저장된 정산</h2>
-      <div class="hint" style="margin-top:0;">엑셀 분석 결과를 상점 이름 붙여서 저장하면 여기서 따로 모아볼 수 있어요. 여러 상점을 운영 중이면 상점별로 구분해서 관리할 수 있어요.</div>
-      <div id="reportsListWrap"></div>
-      <div class="hint" id="reportsListEmptyNote" style="display:none; text-align:center;">아직 제목 붙여서 저장한 정산이 없어요.</div>
     </div>
   </div>
 
@@ -379,6 +381,16 @@ async function init(){
   renderExpenseList();
   loadUploadDraft();
   populateMonthSelect(document.getElementById('jumpToMonthInput'), 36);
+  setupOrdersRangePickers();
+}
+
+function setupOrdersRangePickers(){
+  const today = new Date();
+  const { start } = monthRangeISO(today.getFullYear(), today.getMonth() + 1);
+  rangeStartInput = buildDateSelectInput(start);
+  rangeEndInput = buildDateSelectInput(formatDateISO(today));
+  document.getElementById('rangeStartWrap').appendChild(rangeStartInput.wrapEl);
+  document.getElementById('rangeEndWrap').appendChild(rangeEndInput.wrapEl);
 }
 
 function populateMonthSelect(selectEl, monthsBack){
@@ -413,10 +425,15 @@ const BULK_COST_FIELDS = [
 ];
 let savedOrdersViewYear = null;
 let savedOrdersViewMonth = null;
-let savedOrdersViewMode = 'month'; // 'month' | 'all' | 'report'
-let activeReportId = null;
-let activeReportTitle = '';
+let savedOrdersViewMode = 'month'; // 'month' (기간별) | 'all' (전체)
+let customRangeStart = null; // set when a custom (non-calendar-month) period is applied
+let customRangeEnd = null;
+let rangeStartInput = null; // buildDateSelectInput proxies, set up once in init()
+let rangeEndInput = null;
+let storeFilterValue = 'all'; // 'all' | '__untitled__' | a settlement_reports.id
+let lastSavedReportId = null; // report just created by the most recent saveOrdersToDb call, if titled
 let savedReports = [];
+let reportTitleById = {};
 let addOrderFields = null;
 const ORDER_DRAFT_KEY = 'momoseller_order_draft';
 
@@ -1373,6 +1390,7 @@ async function saveOrdersToDb(orders, reportTitle){
   // without a title, report_id is simply omitted so upsert leaves whatever
   // report (if any) an already-saved row belongs to untouched
   let reportId = null;
+  lastSavedReportId = null;
   if(reportTitle){
     const { data: report, error: reportError } = await sb.from('settlement_reports')
       .insert({ user_id: currentUser.id, title: reportTitle })
@@ -1387,6 +1405,7 @@ async function saveOrdersToDb(orders, reportTitle){
     }
     reportId = report.id;
     rows.forEach(r => { r.report_id = reportId; });
+    lastSavedReportId = reportId;
   }
 
   const { error } = await sb.from('settlement_orders').upsert(rows, { onConflict: 'user_id,platform,order_number,product_name,option_name' });
@@ -1471,28 +1490,19 @@ function setPlatformFilter(p){
   renderResults();
 }
 
-function setPageTab(tab){
+async function setPageTab(tab){
   document.querySelectorAll('.tab-btn[data-page-tab]').forEach(b => b.classList.toggle('active', b.dataset.pageTab === tab));
   document.getElementById('uploadTab').style.display = tab === 'upload' ? 'block' : 'none';
   document.getElementById('ordersTab').style.display = tab === 'orders' ? 'block' : 'none';
-  document.getElementById('reportsTab').style.display = tab === 'reports' ? 'block' : 'none';
   if(tab === 'orders'){
     if(!savedOrdersViewYear){
       const today = new Date();
       savedOrdersViewYear = today.getFullYear();
       savedOrdersViewMonth = today.getMonth() + 1;
     }
+    await populateStoreFilter();
     renderSavedOrdersTab();
   }
-  if(tab === 'reports') renderReportsTab();
-}
-
-function viewReport(reportId, title){
-  activeReportId = reportId;
-  activeReportTitle = title;
-  document.getElementById('reportViewTitle').textContent = title;
-  setPageTab('orders');
-  setSavedOrdersViewMode('report');
 }
 
 function currentOrders(){
@@ -2126,6 +2136,7 @@ async function fetchSavedOrdersInRange(start, end){
 }
 
 function changeSavedOrdersMonth(delta){
+  customRangeStart = null; customRangeEnd = null;
   savedOrdersViewMonth += delta;
   if(savedOrdersViewMonth > 12){ savedOrdersViewMonth = 1; savedOrdersViewYear++; }
   if(savedOrdersViewMonth < 1){ savedOrdersViewMonth = 12; savedOrdersViewYear--; }
@@ -2135,34 +2146,51 @@ function changeSavedOrdersMonth(delta){
 function jumpToSavedOrdersMonth(){
   const val = document.getElementById('jumpToMonthInput').value;
   if(!val) return;
+  customRangeStart = null; customRangeEnd = null;
   const [y, m] = val.split('-').map(Number);
   savedOrdersViewYear = y;
   savedOrdersViewMonth = m;
   renderSavedOrdersTab();
 }
 
-function goToSavedOrdersForAnalysis(){
+function applyCustomOrdersRange(){
+  const start = rangeStartInput.value;
+  const end = rangeEndInput.value;
+  if(!start || !end) return;
+  if(start > end){
+    alert('시작일이 종료일보다 늦을 수 없어요.');
+    return;
+  }
+  customRangeStart = start;
+  customRangeEnd = end;
+  renderSavedOrdersTab();
+}
+
+async function goToSavedOrdersForAnalysis(){
   const dates = analyzedOrders.map(o => o.orderDate).filter(Boolean);
   if(dates.length === 0) return;
   const earliest = new Date(Math.min(...dates));
   savedOrdersViewYear = earliest.getFullYear();
   savedOrdersViewMonth = earliest.getMonth() + 1;
+  customRangeStart = null; customRangeEnd = null;
   setSavedOrdersViewMode('month');
-  setPageTab('orders');
+  await setPageTab('orders');
+  if(lastSavedReportId){
+    storeFilterValue = lastSavedReportId;
+    const sel = document.getElementById('storeFilterSelect');
+    if(sel) sel.value = storeFilterValue;
+    document.getElementById('deleteStoreBtn').style.display = 'inline-block';
+    renderSavedOrdersTab();
+  }
 }
 
 function setSavedOrdersViewMode(mode){
   savedOrdersViewMode = mode;
-  if(mode !== 'report'){ activeReportId = null; activeReportTitle = ''; }
   document.querySelectorAll('.tab-btn[data-order-view]').forEach(b => b.classList.toggle('active', b.dataset.orderView === mode));
-  document.getElementById('savedOrdersModeTabs').style.display = mode === 'report' ? 'none' : 'flex';
-  document.getElementById('reportViewHeader').style.display = mode === 'report' ? 'block' : 'none';
   document.getElementById('savedOrdersMonthNav').style.display = mode === 'month' ? 'block' : 'none';
   document.getElementById('savedOrderListHint').textContent = mode === 'all'
     ? '지금까지 저장된 모든 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.'
-    : mode === 'report'
-    ? '이 정산에 저장된 주문이에요. 눌러서 수정하거나 삭제할 수 있어요.'
-    : '이 달에 저장된 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.';
+    : '이 기간에 저장된 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.';
   renderSavedOrdersTab();
 }
 
@@ -2171,29 +2199,34 @@ async function fetchAllSavedOrders(){
   return data || [];
 }
 
-async function fetchOrdersForReport(reportId){
-  const { data } = await sb.from('settlement_orders').select('*').eq('user_id', currentUser.id).eq('report_id', reportId);
-  return data || [];
-}
-
 async function renderSavedOrdersTab(){
   let orders;
   if(savedOrdersViewMode === 'all'){
     orders = await fetchAllSavedOrders();
-  } else if(savedOrdersViewMode === 'report'){
-    orders = await fetchOrdersForReport(activeReportId);
   } else {
-    document.getElementById('savedOrdersMonthLabel').textContent = `${savedOrdersViewYear}년 ${savedOrdersViewMonth}월`;
-    const { start, end } = monthRangeISO(savedOrdersViewYear, savedOrdersViewMonth);
+    let start, end, label;
+    if(customRangeStart && customRangeEnd){
+      start = customRangeStart; end = customRangeEnd;
+      label = start === end ? start : `${start} ~ ${end}`;
+    } else {
+      const r = monthRangeISO(savedOrdersViewYear, savedOrdersViewMonth);
+      start = r.start; end = r.end;
+      label = `${savedOrdersViewYear}년 ${savedOrdersViewMonth}월`;
+    }
+    document.getElementById('savedOrdersMonthLabel').textContent = label;
     orders = await fetchSavedOrdersInRange(start, end);
   }
+
+  if(storeFilterValue === '__untitled__') orders = orders.filter(o => !o.report_id);
+  else if(storeFilterValue && storeFilterValue !== 'all') orders = orders.filter(o => o.report_id === storeFilterValue);
+
   orders.sort((a, b) => b.order_date.localeCompare(a.order_date));
   window._savedOrdersCache = orders;
   selectedOrderIds = new Set(Array.from(selectedOrderIds).filter(id => orders.some(o => o.id === id)));
 
   const emptyNote = document.getElementById('savedOrderListEmptyNote');
   emptyNote.style.display = orders.length === 0 ? 'block' : 'none';
-  emptyNote.textContent = savedOrdersViewMode === 'all' ? '저장된 주문이 아직 없어요.' : savedOrdersViewMode === 'report' ? '이 정산에는 저장된 주문이 없어요.' : '이 달에는 저장된 주문이 없어요.';
+  emptyNote.textContent = savedOrdersViewMode === 'all' ? '저장된 주문이 아직 없어요.' : '이 기간에는 저장된 주문이 없어요.';
 
   document.getElementById('savedOrderListWrap').innerHTML = orders.map(o => `
     <div class="order-card${selectedOrderIds.has(o.id) ? ' selected' : ''}">
@@ -2219,61 +2252,46 @@ async function fetchSettlementReports(){
   return data || [];
 }
 
-async function renderReportsTab(){
+async function populateStoreFilter(){
   savedReports = await fetchSettlementReports();
+  reportTitleById = {};
+  savedReports.forEach(r => { reportTitleById[r.id] = r.title; });
 
-  const emptyNote = document.getElementById('reportsListEmptyNote');
-  emptyNote.style.display = savedReports.length === 0 ? 'block' : 'none';
+  const sel = document.getElementById('storeFilterSelect');
+  const prevValue = storeFilterValue;
+  sel.innerHTML = '<option value="all">전체 상점</option>'
+    + savedReports.map(r => `<option value="${r.id}">${escapeHtml(r.title)}</option>`).join('')
+    + '<option value="__untitled__">제목 없음</option>';
 
-  const listEl = document.getElementById('reportsListWrap');
-  listEl.innerHTML = '';
-
-  const reportsWithOrders = await Promise.all(savedReports.map(async report => {
-    const orders = await fetchOrdersForReport(report.id);
-    return { report, orders };
-  }));
-
-  reportsWithOrders.forEach(({ report, orders }) => {
-    const gross = orders.reduce((s, o) => s + (o.gross_sales || 0), 0);
-    const profit = orders.reduce((s, o) => s + (o.net_profit || 0), 0);
-    const dates = orders.map(o => o.order_date).filter(Boolean).sort();
-    const period = dates.length
-      ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} ~ ${dates[dates.length - 1]}`)
-      : '저장된 주문 없음';
-
-    const card = document.createElement('div');
-    card.className = 'order-card';
-    card.style.cursor = 'pointer';
-    card.innerHTML = `
-      <div class="order-card-top"><span>${escapeHtml(report.title)}</span><span>${orders.length}건</span></div>
-      <div class="hint" style="margin-top:0; margin-bottom:8px;">${escapeHtml(period)}</div>
-      <div class="order-card-nums"><span>매출<b>${formatWon(gross)}</b></span><span>순이익<b>${formatWon(profit)}</b></span></div>
-    `;
-    card.onclick = () => viewReport(report.id, report.title);
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.className = 'mini-btn danger';
-    deleteBtn.style.marginTop = '10px';
-    deleteBtn.textContent = '삭제';
-    deleteBtn.onclick = (e) => { e.stopPropagation(); deleteReport(report.id); };
-    card.appendChild(deleteBtn);
-
-    listEl.appendChild(card);
-  });
+  const stillValid = prevValue === 'all' || prevValue === '__untitled__' || savedReports.some(r => r.id === prevValue);
+  storeFilterValue = stillValid ? prevValue : 'all';
+  sel.value = storeFilterValue;
+  document.getElementById('deleteStoreBtn').style.display = (storeFilterValue !== 'all' && storeFilterValue !== '__untitled__') ? 'inline-block' : 'none';
 }
 
-async function deleteReport(id){
-  if(!confirm('이 정산 제목을 삭제할까요? 저장된 주문들은 삭제되지 않고 주문 목록에 그대로 남아요.')) return;
-  await sb.from('settlement_orders').update({ report_id: null }).eq('report_id', id);
-  await sb.from('settlement_reports').delete().eq('id', id);
-  renderReportsTab();
+function applyStoreFilter(){
+  storeFilterValue = document.getElementById('storeFilterSelect').value;
+  document.getElementById('deleteStoreBtn').style.display = (storeFilterValue !== 'all' && storeFilterValue !== '__untitled__') ? 'inline-block' : 'none';
+  renderSavedOrdersTab();
+}
+
+async function deleteCurrentStoreFilter(){
+  if(storeFilterValue === 'all' || storeFilterValue === '__untitled__') return;
+  const title = reportTitleById[storeFilterValue] || '';
+  if(!confirm(`"${title}" 정산 제목을 삭제할까요? 저장된 주문들은 삭제되지 않고 주문 목록에 그대로 남아요.`)) return;
+  await sb.from('settlement_orders').update({ report_id: null }).eq('report_id', storeFilterValue);
+  await sb.from('settlement_reports').delete().eq('id', storeFilterValue);
+  storeFilterValue = 'all';
+  await populateStoreFilter();
+  renderSavedOrdersTab();
 }
 
 function savedOrderSummaryHtml(o){
+  const storeTitle = o.report_id ? reportTitleById[o.report_id] : null;
   return `
     <div class="order-card-top"><span>${escapeHtml(o.order_date)}</span><span>${escapeHtml(PLATFORM_LABELS[o.platform] || o.platform)}</span></div>
     <div class="order-card-name">${escapeHtml(o.product_name)}${o.option_name ? ' (' + escapeHtml(o.option_name) + ')' : ''}</div>
+    ${storeTitle ? `<div class="hint" style="margin:2px 0 0;">🏷 ${escapeHtml(storeTitle)}</div>` : ''}
     <div class="order-card-nums"><span>매출<b>${formatWon(o.gross_sales)}</b></span><span>순이익<b>${formatWon(o.net_profit)}</b></span><span>마진율<b>${o.margin_rate.toFixed(1)}%</b></span></div>
   `;
 }
