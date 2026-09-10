@@ -41,6 +41,8 @@
   .tab-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
   .order-card{ border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:8px; background:#fff; cursor:pointer; }
   .order-card.selected{ border-color:var(--teal); background:#F3F8F7; }
+  .date-select-group{ display:flex; gap:6px; }
+  .date-select-group select{ flex:1; min-width:0; width:auto; }
   .mini-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); }
   .bulk-edit-panel{ border:1px solid var(--teal); border-radius:4px; padding:12px 14px; margin-bottom:14px; background:#F3F8F7; }
   .bulk-field-row{ display:flex; align-items:center; gap:8px; margin-top:8px; }
@@ -414,6 +416,13 @@ function parseMoney(v){
   if(typeof v === 'number') return isNaN(v) ? 0 : v;
   const cleaned = String(v).replace(/[₩\\,\s]/g, '');
   if(cleaned === '' || cleaned === '-') return 0;
+  // some real exports (e.g. Naver's "no value" sentinel 1899/12/31 0:00) put a
+  // date/time placeholder in what's otherwise a numeric column - parseFloat
+  // would silently read just the leading digits ("1899") as if it were a real
+  // amount/quantity, so reject anything date/time-shaped outright instead
+  // (both slash-style like that sentinel and this app's own hyphen-dated
+  // 주문일 format like "2026-02-12", in case either ever lands in the wrong column).
+  if(/[\/:]|^\d{4}[-.]\d{1,2}[-.]\d{1,2}/.test(cleaned)) return 0;
   const n = parseFloat(cleaned);
   return isNaN(n) ? 0 : n;
 }
@@ -2169,8 +2178,87 @@ function buildLabeledInput(labelText, inputEl){
   const label = document.createElement('label');
   label.textContent = labelText;
   div.appendChild(label);
-  div.appendChild(inputEl);
+  div.appendChild(inputEl.wrapEl || inputEl);
   return div;
+}
+
+// native <input type=date> enforces its own minimum intrinsic width on iOS
+// Safari regardless of CSS (same issue the 기간별/월별 <input type=month>
+// pickers had, fixed earlier by switching those to <select>) - so this uses
+// 3 plain <select> elements instead, exposing a .value getter/setter that
+// reads/writes the same "YYYY-MM-DD" string an <input type=date> would, so
+// every existing caller (validateOrderFields, readOrderFields, draft
+// save/restore) keeps working unchanged.
+function buildDateSelectInput(initialValue){
+  const yearSel = document.createElement('select');
+  const monthSel = document.createElement('select');
+  const daySel = document.createElement('select');
+
+  const today = new Date();
+  const thisYear = today.getFullYear();
+  for(let y = thisYear + 1; y >= thisYear - 5; y--){
+    const opt = document.createElement('option');
+    opt.value = String(y);
+    opt.textContent = y + '년';
+    yearSel.appendChild(opt);
+  }
+  for(let m = 1; m <= 12; m++){
+    const opt = document.createElement('option');
+    opt.value = String(m);
+    opt.textContent = m + '월';
+    monthSel.appendChild(opt);
+  }
+
+  function populateDays(keepDay){
+    const y = Number(yearSel.value), m = Number(monthSel.value);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const wanted = keepDay || Number(daySel.value) || 1;
+    daySel.innerHTML = '';
+    for(let d = 1; d <= daysInMonth; d++){
+      const opt = document.createElement('option');
+      opt.value = String(d);
+      opt.textContent = d + '일';
+      daySel.appendChild(opt);
+    }
+    daySel.value = String(Math.min(wanted, daysInMonth));
+  }
+
+  const initStr = initialValue || new Date().toISOString().slice(0, 10);
+  const [iY, iM, iD] = initStr.split('-').map(Number);
+  yearSel.value = String(iY || thisYear);
+  monthSel.value = String(iM || today.getMonth() + 1);
+  populateDays(iD || today.getDate());
+
+  yearSel.addEventListener('change', () => populateDays());
+  monthSel.addEventListener('change', () => populateDays());
+
+  const wrap = document.createElement('div');
+  wrap.className = 'date-select-group';
+  wrap.appendChild(yearSel);
+  wrap.appendChild(monthSel);
+  wrap.appendChild(daySel);
+
+  const proxy = { wrapEl: wrap };
+  Object.defineProperty(proxy, 'value', {
+    get(){
+      return `${yearSel.value}-${String(monthSel.value).padStart(2, '0')}-${String(daySel.value).padStart(2, '0')}`;
+    },
+    set(v){
+      if(!v) return;
+      const [y, m, d] = v.split('-').map(Number);
+      if(!y || !m || !d) return;
+      yearSel.value = String(y);
+      monthSel.value = String(m);
+      populateDays(d);
+    },
+  });
+  proxy.addEventListener = (event, handler) => {
+    yearSel.addEventListener(event, handler);
+    monthSel.addEventListener(event, handler);
+    daySel.addEventListener(event, handler);
+  };
+
+  return proxy;
 }
 
 function buildOrderFormFields(order){
@@ -2185,9 +2273,7 @@ function buildOrderFormFields(order){
   });
   platformSel.value = o.platform || 'manual';
 
-  const dateInput = document.createElement('input');
-  dateInput.type = 'date';
-  dateInput.value = o.order_date || new Date().toISOString().slice(0, 10);
+  const dateInput = buildDateSelectInput(o.order_date);
 
   const productNameInput = document.createElement('input');
   productNameInput.type = 'text';
@@ -2236,12 +2322,13 @@ function buildOrderFormFields(order){
 
   const wrap = document.createElement('div');
 
-  const row1 = document.createElement('div');
-  row1.className = 'row';
-  row1.style.marginBottom = '14px';
-  row1.appendChild(buildLabeledInput('판매처', platformSel));
-  row1.appendChild(buildLabeledInput('주문일', dateInput));
-  wrap.appendChild(row1);
+  const platformBlock = buildLabeledInput('판매처', platformSel);
+  platformBlock.className = 'field-block';
+  wrap.appendChild(platformBlock);
+
+  const dateBlock = buildLabeledInput('주문일', dateInput);
+  dateBlock.className = 'field-block';
+  wrap.appendChild(dateBlock);
 
   const nameBlock = buildLabeledInput('상품명', productNameInput);
   nameBlock.className = 'field-block';
