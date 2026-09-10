@@ -211,7 +211,7 @@
       <h2 style="margin:0;">상품 원가</h2>
       <div style="display:flex; gap:6px;">
         <button class="mini-btn" id="costSelectAllBtn" onclick="selectAllVisibleCostItems()" style="display:none;">전체 선택</button>
-        <button class="mini-btn" id="costSelectModeBtn" onclick="toggleCostSelectMode()">선택해서 일괄 등록</button>
+        <button class="mini-btn" id="costSelectModeBtn" onclick="toggleCostSelectMode()">선택해서 일괄 등록/수정</button>
       </div>
     </div>
     <div class="hint" id="costSummaryText" style="margin-top:0;"></div>
@@ -384,6 +384,7 @@ let fileSeq = 0;
 let costMap = {};         // costKey -> { unitCost, packagingCost }
 let otherExpenses = [];   // rows from other_expenses for the current user
 let unregisteredCostItems = [];
+let allCostItems = [];
 let lastUnallocated = { adCost: 0, otherCost: 0 };
 let costSelectMode = false;
 let selectedCostKeys = new Set();
@@ -1183,10 +1184,32 @@ function escapeHtml(str){
 function applyCostsAndExpenses(orders){
   const method = document.getElementById('adAllocationMethod').value;
 
+  // missingMap: unregistered products only (individual registration form).
+  // allMap: every distinct product regardless of registration status, so
+  // 선택해서 일괄 등록 mode can bulk-edit costs that are already registered too.
   const missingMap = new Map();
+  const allMap = new Map();
+  const trackInto = (map, o, key) => {
+    if(map.has(key)){
+      const item = map.get(key);
+      if(o.orderDate){
+        if(!item.dateMin || o.orderDate < item.dateMin) item.dateMin = o.orderDate;
+        if(!item.dateMax || o.orderDate > item.dateMax) item.dateMax = o.orderDate;
+      }
+    } else {
+      map.set(key, {
+        platform: o.platform, productName: o.productName, optionName: o.optionName,
+        dateMin: o.orderDate || null, dateMax: o.orderDate || null,
+      });
+    }
+  };
   orders.forEach(o => {
     const key = costKey(o.platform, o.productName, o.optionName);
     const cost = costMap[key];
+
+    trackInto(allMap, o, key);
+    if(!cost) trackInto(missingMap, o, key);
+
     if(cost){
       o.productCost = cost.unitCost * o.quantity;
       o.packagingCost = cost.packagingCost * o.quantity;
@@ -1195,23 +1218,12 @@ function applyCostsAndExpenses(orders){
       o.productCost = 0;
       o.packagingCost = 0;
       o.courierCost = 0;
-      if(missingMap.has(key)){
-        const item = missingMap.get(key);
-        if(o.orderDate){
-          if(!item.dateMin || o.orderDate < item.dateMin) item.dateMin = o.orderDate;
-          if(!item.dateMax || o.orderDate > item.dateMax) item.dateMax = o.orderDate;
-        }
-      } else {
-        missingMap.set(key, {
-          platform: o.platform, productName: o.productName, optionName: o.optionName,
-          dateMin: o.orderDate || null, dateMax: o.orderDate || null,
-        });
-      }
     }
     o.allocatedAdCost = 0;
     o.allocatedOtherCost = 0;
   });
   unregisteredCostItems = Array.from(missingMap.values());
+  allCostItems = Array.from(allMap.values());
 
   const dates = orders.map(o => o.orderDate).filter(Boolean);
   const periodStart = dates.length ? new Date(Math.min(...dates)) : null;
@@ -1442,12 +1454,15 @@ function renderCostCard(){
   document.getElementById('costCard').style.display = 'block';
   document.getElementById('costSummaryText').textContent = `자동 매칭 완료 ${matchedCount}개 · 원가 미등록 ${missingCount}개`;
 
-  const validKeys = new Set(unregisteredCostItems.map(item => costKey(item.platform, item.productName, item.optionName)));
+  // select mode covers every product (registered or not) so already-registered
+  // costs can be bulk-corrected too, not just newly-registered from scratch
+  const itemsForRender = costSelectMode ? allCostItems : unregisteredCostItems;
+  const validKeys = new Set(itemsForRender.map(item => costKey(item.platform, item.productName, item.optionName)));
   selectedCostKeys = new Set(Array.from(selectedCostKeys).filter(k => validKeys.has(k)));
 
   const listEl = document.getElementById('unregisteredCostList');
   listEl.innerHTML = '';
-  unregisteredCostItems.forEach(item => {
+  itemsForRender.forEach(item => {
     const key = costKey(item.platform, item.productName, item.optionName);
     const row = document.createElement('div');
     row.className = 'file-row' + (costSelectMode && selectedCostKeys.has(key) ? ' selected' : '');
@@ -1485,6 +1500,17 @@ function renderCostCard(){
         ? `주문일 ${formatDateFull(item.dateMin)}`
         : `주문일 ${formatDateFull(item.dateMin)} ~ ${formatDateFull(item.dateMax)}`;
       textCol.appendChild(meta);
+    }
+
+    if(costSelectMode){
+      const existing = costMap[key];
+      const statusMeta = document.createElement('div');
+      statusMeta.className = 'file-row-meta';
+      statusMeta.style.marginTop = '2px';
+      statusMeta.textContent = existing
+        ? `현재 원가 ${formatWon(existing.unitCost)} · 포장비 ${formatWon(existing.packagingCost)} · 택배비 ${formatWon(existing.courierCost)}`
+        : '원가 미등록';
+      textCol.appendChild(statusMeta);
     }
 
     top.appendChild(textCol);
@@ -1544,8 +1570,8 @@ function renderCostCard(){
   });
 
   const costSelectAllBtn = document.getElementById('costSelectAllBtn');
-  if(costSelectMode && unregisteredCostItems.length > 0){
-    const allSelected = unregisteredCostItems.every(item => selectedCostKeys.has(costKey(item.platform, item.productName, item.optionName)));
+  if(costSelectMode && allCostItems.length > 0){
+    const allSelected = allCostItems.every(item => selectedCostKeys.has(costKey(item.platform, item.productName, item.optionName)));
     costSelectAllBtn.textContent = allSelected ? '전체 해제' : '전체 선택';
   }
 
@@ -1555,7 +1581,7 @@ function renderCostCard(){
 function toggleCostSelectMode(){
   costSelectMode = !costSelectMode;
   selectedCostKeys.clear();
-  document.getElementById('costSelectModeBtn').textContent = costSelectMode ? '선택 취소' : '선택해서 일괄 등록';
+  document.getElementById('costSelectModeBtn').textContent = costSelectMode ? '선택 취소' : '선택해서 일괄 등록/수정';
   document.getElementById('costSelectModeBtn').classList.toggle('active', costSelectMode);
   document.getElementById('costSelectAllBtn').style.display = costSelectMode ? 'inline-block' : 'none';
   document.getElementById('costSelectAllBtn').textContent = '전체 선택';
@@ -1563,11 +1589,11 @@ function toggleCostSelectMode(){
 }
 
 function selectAllVisibleCostItems(){
-  const allSelected = unregisteredCostItems.length > 0 && unregisteredCostItems.every(item => selectedCostKeys.has(costKey(item.platform, item.productName, item.optionName)));
+  const allSelected = allCostItems.length > 0 && allCostItems.every(item => selectedCostKeys.has(costKey(item.platform, item.productName, item.optionName)));
   if(allSelected){
     selectedCostKeys.clear();
   } else {
-    unregisteredCostItems.forEach(item => selectedCostKeys.add(costKey(item.platform, item.productName, item.optionName)));
+    allCostItems.forEach(item => selectedCostKeys.add(costKey(item.platform, item.productName, item.optionName)));
   }
   renderCostCard();
 }
@@ -1605,7 +1631,7 @@ function renderBulkCostPanel(){
     `).join('')}
     <div class="hint" id="bulkCostEditStatus" style="margin-top:8px;"></div>
     <div style="display:flex; gap:8px; margin-top:10px;">
-      <button type="button" class="primary" onclick="submitBulkCostEdit()">일괄 등록 (${count}개)</button>
+      <button type="button" class="primary" onclick="submitBulkCostEdit()">일괄 등록/수정 (${count}개)</button>
       <button type="button" class="secondary" onclick="clearCostSelection()">선택 해제</button>
     </div>
   `;
@@ -1634,7 +1660,7 @@ async function submitBulkCostEdit(){
   }
 
   const keys = Array.from(selectedCostKeys);
-  const items = keys.map(k => unregisteredCostItems.find(item => costKey(item.platform, item.productName, item.optionName) === k)).filter(Boolean);
+  const items = keys.map(k => allCostItems.find(item => costKey(item.platform, item.productName, item.optionName) === k)).filter(Boolean);
   statusEl.textContent = `${items.length}개 저장하는 중...`;
   statusEl.style.color = '';
 
@@ -1666,7 +1692,7 @@ async function submitBulkCostEdit(){
 
   costSelectMode = false;
   selectedCostKeys.clear();
-  document.getElementById('costSelectModeBtn').textContent = '선택해서 일괄 등록';
+  document.getElementById('costSelectModeBtn').textContent = '선택해서 일괄 등록/수정';
   document.getElementById('costSelectModeBtn').classList.remove('active');
   document.getElementById('costSelectAllBtn').style.display = 'none';
 
