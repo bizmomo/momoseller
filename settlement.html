@@ -1821,6 +1821,21 @@ function renderOrderList(){
       <div class="order-detail-row"><span>배분 기타비용</span><span class="amt-neg">${formatWon(-o.allocatedOtherCost)}</span></div>
       <div class="order-detail-row total"><span>순이익</span><span>${formatWon(o.netProfit)}</span></div>
     `;
+
+    const editToggleBtn = document.createElement('button');
+    editToggleBtn.type = 'button';
+    editToggleBtn.className = 'mini-btn';
+    editToggleBtn.style.marginTop = '10px';
+    editToggleBtn.textContent = '날짜·상품명·금액·판매처 수정';
+    editToggleBtn.onclick = (e) => { e.stopPropagation(); toggleAnalysisOrderEdit(o, editWrap, editToggleBtn); };
+    detail.appendChild(editToggleBtn);
+
+    const editWrap = document.createElement('div');
+    editWrap.style.display = 'none';
+    editWrap.style.marginTop = '10px';
+    editWrap.addEventListener('click', e => e.stopPropagation());
+    detail.appendChild(editWrap);
+
     card.appendChild(detail);
 
     card.onclick = () => { detail.style.display = detail.style.display === 'none' ? 'block' : 'none'; };
@@ -1849,6 +1864,91 @@ function renderOrderList(){
       <td>${o.marginRate.toFixed(1)}%</td>
     </tr>
   `).join('');
+}
+
+// lets 날짜/상품명/금액/판매처 be corrected directly on an analyzed (not yet
+// necessarily saved) order - e.g. when parsing got something wrong - by
+// mutating the order object in place (it's the same reference held in
+// analyzedOrders, currentOrders() only filters, never copies) and then
+// recomputing everything downstream the same way a fresh cost registration
+// would (applyCostsAndExpenses recomputes netProfit/marginRate for every
+// order, since changing platform/상품명 can also change which registered
+// cost applies).
+function buildAnalysisOrderEditFields(o){
+  const platformSel = document.createElement('select');
+  [['coupang', '쿠팡'], ['smartstore', '스마트스토어'], ['manual', '직접입력(기타)']].forEach(([val, label]) => {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = label;
+    platformSel.appendChild(opt);
+  });
+  platformSel.value = o.platform || 'manual';
+
+  const dateInput = buildDateSelectInput(o.orderDate ? formatDateISO(o.orderDate) : null);
+
+  const productNameInput = document.createElement('input');
+  productNameInput.type = 'text';
+  productNameInput.value = o.productName || '';
+
+  const amountInput = document.createElement('input');
+  amountInput.type = 'number';
+  amountInput.min = '0';
+  amountInput.value = o.productAmount != null ? o.productAmount : '';
+
+  const wrap = document.createElement('div');
+  [
+    ['판매처', platformSel],
+    ['주문일', dateInput],
+    ['상품명', productNameInput],
+    ['상품 금액 (원)', amountInput],
+  ].forEach(([labelText, el]) => {
+    const block = buildLabeledInput(labelText, el);
+    block.className = 'field-block';
+    wrap.appendChild(block);
+  });
+
+  return { wrap, fields: { platformSel, dateInput, productNameInput, amountInput } };
+}
+
+function toggleAnalysisOrderEdit(o, editWrap, toggleBtn){
+  const isOpening = editWrap.style.display === 'none';
+  editWrap.style.display = isOpening ? 'block' : 'none';
+  toggleBtn.textContent = isOpening ? '취소' : '날짜·상품명·금액·판매처 수정';
+  if(!isOpening || editWrap.dataset.built) return;
+  editWrap.dataset.built = '1';
+
+  const built = buildAnalysisOrderEditFields(o);
+  editWrap.appendChild(built.wrap);
+
+  const statusEl = document.createElement('div');
+  statusEl.className = 'hint';
+  editWrap.appendChild(statusEl);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'primary';
+  saveBtn.style.marginTop = '8px';
+  saveBtn.textContent = '저장';
+  saveBtn.onclick = () => {
+    const name = built.fields.productNameInput.value.trim();
+    const amount = Number(built.fields.amountInput.value);
+    if(!name){ statusEl.textContent = '상품명을 입력해주세요.'; statusEl.style.color = 'var(--error)'; return; }
+    if(built.fields.amountInput.value === '' || isNaN(amount) || amount < 0){
+      statusEl.textContent = '상품 금액을 입력해주세요.'; statusEl.style.color = 'var(--error)'; return;
+    }
+
+    o.platform = built.fields.platformSel.value;
+    o.orderDate = parseDateValue(built.fields.dateInput.value);
+    o.productName = name;
+    o.productAmount = amount;
+    o.grossSales = o.productAmount + o.shippingAmount;
+    o.settlementAmount = o.grossSales - o.marketplaceFee - o.shippingFee - o.otherPlatformFee;
+
+    applyCostsAndExpenses(analyzedOrders);
+    renderCostCard();
+    renderResults();
+  };
+  editWrap.appendChild(saveBtn);
 }
 
 function resetAnalysis(){
