@@ -447,6 +447,19 @@ function findHeaderRow(aoa){
   return -1;
 }
 
+// scans the whole table (not just the first 20 rows) for every row that looks
+// like a platform header, so back-to-back tables (e.g. 쿠팡 내역 아래에 이어
+// 붙여넣은 스마트스토어 내역) can each be split out and parsed with their own
+// platform's column layout instead of being force-read through one platform's.
+function findAllHeaderRows(aoa){
+  const found = [];
+  for(let i = 0; i < aoa.length; i++){
+    const platform = detectPlatform(aoa[i] || []);
+    if(platform !== 'unknown') found.push({ index: i, platform });
+  }
+  return found;
+}
+
 function buildNormalizedColMap(headerRow){
   const map = {};
   headerRow.forEach((h, idx) => {
@@ -883,6 +896,13 @@ function loadFileRows(entry, aoa){
     entry.error = '분석할 주문이 없습니다.';
     return;
   }
+
+  const headerRows = findAllHeaderRows(aoa);
+  if(headerRows.length > 1){
+    splitEntryByPlatform(entry, aoa, headerRows);
+    return;
+  }
+
   const headerIdx = findHeaderRow(aoa);
   const platform = headerIdx === -1 ? 'unknown' : detectPlatform(aoa[headerIdx]);
   entry.platform = platform;
@@ -893,6 +913,22 @@ function loadFileRows(entry, aoa){
     return;
   }
   reparseFile(entry);
+}
+
+function splitEntryByPlatform(entry, aoa, headerRows){
+  headerRows.forEach((h, i) => {
+    const segAoa = aoa.slice(h.index, i + 1 < headerRows.length ? headerRows[i + 1].index : aoa.length);
+    const target = i === 0 ? entry : {
+      id: entry.id + '-' + (i + 1), name: `${entry.name} - ${PLATFORM_LABELS[h.platform] || h.platform}`,
+      platform: 'unknown', rows: [], error: null,
+      dateMin: null, dateMax: null, productCount: 0,
+      needsPassword: false, encryptedBytes: null,
+    };
+    target.platform = h.platform;
+    target.aoa = segAoa;
+    reparseFile(target);
+    if(i > 0) uploadedFiles.push(target);
+  });
 }
 
 function reparseFile(entry){
