@@ -289,7 +289,7 @@
           <button class="icon-btn" onclick="changeSavedOrdersMonth(1)" aria-label="다음 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
         </div>
         <div class="field-block" style="margin-top:12px; margin-bottom:0;">
-          <input type="month" id="jumpToMonthInput">
+          <select id="jumpToMonthInput"></select>
         </div>
         <button class="secondary" onclick="jumpToSavedOrdersMonth()">선택한 달로 바로 이동</button>
       </div>
@@ -330,6 +330,20 @@ async function init(){
   await Promise.all([loadCostMap(), loadOtherExpenses()]);
   renderExpenseList();
   loadUploadDraft();
+  populateMonthSelect(document.getElementById('jumpToMonthInput'), 36);
+}
+
+function populateMonthSelect(selectEl, monthsBack){
+  const today = new Date();
+  let y = today.getFullYear(), m = today.getMonth() + 1;
+  selectEl.innerHTML = '';
+  for(let i = 0; i <= monthsBack; i++){
+    const opt = document.createElement('option');
+    opt.value = `${y}-${String(m).padStart(2, '0')}`;
+    opt.textContent = `${y}년 ${m}월`;
+    selectEl.appendChild(opt);
+    m--; if(m < 1){ m = 12; y--; }
+  }
 }
 
 // ============ state ============

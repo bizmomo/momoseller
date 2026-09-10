@@ -154,9 +154,9 @@
         <button class="tab-btn" data-months="12" onclick="setPeriodMonths(12)">12개월</button>
       </div>
       <div class="row" style="margin-top:10px; align-items:center;">
-        <div><input type="month" id="customStartMonth"></div>
+        <div><select id="customStartMonth"></select></div>
         <span style="color:var(--ink-soft); font-size:13px;">~</span>
-        <div><input type="month" id="customEndMonth"></div>
+        <div><select id="customEndMonth"></select></div>
       </div>
       <button class="secondary" onclick="applyCustomRange()">직접 지정한 기간 보기</button>
       <div class="hint" id="customRangeStatus" style="display:none;"></div>
@@ -199,8 +199,23 @@ requireAuth(function(user){
   const today = new Date();
   viewYear = today.getFullYear();
   viewMonth = today.getMonth() + 1;
+  populateMonthSelect(document.getElementById('customStartMonth'), 36);
+  populateMonthSelect(document.getElementById('customEndMonth'), 36);
   renderReportTab();
 });
+
+function populateMonthSelect(selectEl, monthsBack){
+  const today = new Date();
+  let y = today.getFullYear(), m = today.getMonth() + 1;
+  selectEl.innerHTML = '';
+  for(let i = 0; i <= monthsBack; i++){
+    const opt = document.createElement('option');
+    opt.value = `${y}-${String(m).padStart(2, '0')}`;
+    opt.textContent = `${y}년 ${m}월`;
+    selectEl.appendChild(opt);
+    m--; if(m < 1){ m = 12; y--; }
+  }
+}
 
 function formatWon(n){
   const rounded = Math.round(n || 0);
