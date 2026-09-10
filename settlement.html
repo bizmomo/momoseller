@@ -101,6 +101,7 @@
   <div class="tab-row">
     <button class="tab-btn active" data-page-tab="upload" onclick="setPageTab('upload')">엑셀 업로드</button>
     <button class="tab-btn" data-page-tab="orders" onclick="setPageTab('orders')">주문 목록</button>
+    <button class="tab-btn" data-page-tab="reports" onclick="setPageTab('reports')">저장된 정산</button>
   </div>
 
   <div id="uploadTab">
@@ -294,6 +295,10 @@
   </div>
 
   <div class="card" id="actionCard" style="display:none;">
+    <div class="field-block">
+      <label for="reportTitleInput">상점 이름 (선택 - 여러 상점을 따로 저장하고 싶을 때)</label>
+      <input type="text" id="reportTitleInput" placeholder="예) 스토어A 3월 정산">
+    </div>
     <button class="primary" onclick="sendAnalyzedToOrderList()">주문 목록으로 보내기</button>
     <button class="secondary" onclick="downloadResult()">엑셀 다운로드</button>
     <button class="secondary" onclick="resetAnalysis()">다시 분석</button>
@@ -303,7 +308,11 @@
 
   <div id="ordersTab" style="display:none;">
     <div class="card">
-      <div class="tab-row" style="margin-bottom:0;">
+      <div id="reportViewHeader" style="display:none;">
+        <button class="mini-btn" onclick="setPageTab('reports')">← 저장된 정산 목록으로</button>
+        <h2 style="margin:10px 0 0;" id="reportViewTitle"></h2>
+      </div>
+      <div id="savedOrdersModeTabs" class="tab-row" style="margin-bottom:0;">
         <button class="tab-btn active" data-order-view="month" onclick="setSavedOrdersViewMode('month')">월별 보기</button>
         <button class="tab-btn" data-order-view="all" onclick="setSavedOrdersViewMode('all')">전체 보기</button>
       </div>
@@ -334,6 +343,15 @@
       <div id="bulkEditPanel" class="bulk-edit-panel" style="display:none;"></div>
       <div id="savedOrderListWrap"></div>
       <div class="hint" id="savedOrderListEmptyNote" style="display:none; text-align:center;">이 달에는 저장된 주문이 없어요.</div>
+    </div>
+  </div>
+
+  <div id="reportsTab" style="display:none;">
+    <div class="card">
+      <h2>저장된 정산</h2>
+      <div class="hint" style="margin-top:0;">엑셀 분석 결과를 상점 이름 붙여서 저장하면 여기서 따로 모아볼 수 있어요. 여러 상점을 운영 중이면 상점별로 구분해서 관리할 수 있어요.</div>
+      <div id="reportsListWrap"></div>
+      <div class="hint" id="reportsListEmptyNote" style="display:none; text-align:center;">아직 제목 붙여서 저장한 정산이 없어요.</div>
     </div>
   </div>
 
@@ -395,7 +413,10 @@ const BULK_COST_FIELDS = [
 ];
 let savedOrdersViewYear = null;
 let savedOrdersViewMonth = null;
-let savedOrdersViewMode = 'month';
+let savedOrdersViewMode = 'month'; // 'month' | 'all' | 'report'
+let activeReportId = null;
+let activeReportTitle = '';
+let savedReports = [];
 let addOrderFields = null;
 const ORDER_DRAFT_KEY = 'momoseller_order_draft';
 
@@ -1303,14 +1324,15 @@ function analyzeFiles(){
 }
 
 function sendAnalyzedToOrderList(){
-  saveOrdersToDb(analyzedOrders);
+  const title = document.getElementById('reportTitleInput').value.trim();
+  saveOrdersToDb(analyzedOrders, title);
 }
 
 function formatDateISO(d){
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-async function saveOrdersToDb(orders){
+async function saveOrdersToDb(orders, reportTitle){
   const statusEl = document.getElementById('saveOrdersStatus');
   const rows = orders.filter(o => o.orderDate).map(o => ({
     user_id: currentUser.id,
@@ -1345,6 +1367,27 @@ async function saveOrdersToDb(orders){
     return;
   }
   if(statusEl){ statusEl.textContent = '통계용 정산 데이터 저장 중...'; statusEl.style.color = ''; }
+
+  // an explicit title creates a named, separately-viewable batch (for sellers
+  // running multiple stores) and tags every row saved in this pass with it;
+  // without a title, report_id is simply omitted so upsert leaves whatever
+  // report (if any) an already-saved row belongs to untouched
+  let reportId = null;
+  if(reportTitle){
+    const { data: report, error: reportError } = await sb.from('settlement_reports')
+      .insert({ user_id: currentUser.id, title: reportTitle })
+      .select().single();
+    if(reportError || !report){
+      if(statusEl){
+        statusEl.textContent = '정산 제목 저장에 실패했어요. 다시 시도해주세요.';
+        statusEl.style.color = 'var(--error)';
+      }
+      console.error('settlement_reports insert failed', reportError);
+      return;
+    }
+    reportId = report.id;
+    rows.forEach(r => { r.report_id = reportId; });
+  }
 
   const { error } = await sb.from('settlement_orders').upsert(rows, { onConflict: 'user_id,platform,order_number,product_name,option_name' });
 
@@ -1432,6 +1475,7 @@ function setPageTab(tab){
   document.querySelectorAll('.tab-btn[data-page-tab]').forEach(b => b.classList.toggle('active', b.dataset.pageTab === tab));
   document.getElementById('uploadTab').style.display = tab === 'upload' ? 'block' : 'none';
   document.getElementById('ordersTab').style.display = tab === 'orders' ? 'block' : 'none';
+  document.getElementById('reportsTab').style.display = tab === 'reports' ? 'block' : 'none';
   if(tab === 'orders'){
     if(!savedOrdersViewYear){
       const today = new Date();
@@ -1440,6 +1484,15 @@ function setPageTab(tab){
     }
     renderSavedOrdersTab();
   }
+  if(tab === 'reports') renderReportsTab();
+}
+
+function viewReport(reportId, title){
+  activeReportId = reportId;
+  activeReportTitle = title;
+  document.getElementById('reportViewTitle').textContent = title;
+  setPageTab('orders');
+  setSavedOrdersViewMode('report');
 }
 
 function currentOrders(){
@@ -2100,10 +2153,15 @@ function goToSavedOrdersForAnalysis(){
 
 function setSavedOrdersViewMode(mode){
   savedOrdersViewMode = mode;
+  if(mode !== 'report'){ activeReportId = null; activeReportTitle = ''; }
   document.querySelectorAll('.tab-btn[data-order-view]').forEach(b => b.classList.toggle('active', b.dataset.orderView === mode));
+  document.getElementById('savedOrdersModeTabs').style.display = mode === 'report' ? 'none' : 'flex';
+  document.getElementById('reportViewHeader').style.display = mode === 'report' ? 'block' : 'none';
   document.getElementById('savedOrdersMonthNav').style.display = mode === 'month' ? 'block' : 'none';
   document.getElementById('savedOrderListHint').textContent = mode === 'all'
     ? '지금까지 저장된 모든 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.'
+    : mode === 'report'
+    ? '이 정산에 저장된 주문이에요. 눌러서 수정하거나 삭제할 수 있어요.'
     : '이 달에 저장된 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.';
   renderSavedOrdersTab();
 }
@@ -2113,10 +2171,17 @@ async function fetchAllSavedOrders(){
   return data || [];
 }
 
+async function fetchOrdersForReport(reportId){
+  const { data } = await sb.from('settlement_orders').select('*').eq('user_id', currentUser.id).eq('report_id', reportId);
+  return data || [];
+}
+
 async function renderSavedOrdersTab(){
   let orders;
   if(savedOrdersViewMode === 'all'){
     orders = await fetchAllSavedOrders();
+  } else if(savedOrdersViewMode === 'report'){
+    orders = await fetchOrdersForReport(activeReportId);
   } else {
     document.getElementById('savedOrdersMonthLabel').textContent = `${savedOrdersViewYear}년 ${savedOrdersViewMonth}월`;
     const { start, end } = monthRangeISO(savedOrdersViewYear, savedOrdersViewMonth);
@@ -2128,7 +2193,7 @@ async function renderSavedOrdersTab(){
 
   const emptyNote = document.getElementById('savedOrderListEmptyNote');
   emptyNote.style.display = orders.length === 0 ? 'block' : 'none';
-  emptyNote.textContent = savedOrdersViewMode === 'all' ? '저장된 주문이 아직 없어요.' : '이 달에는 저장된 주문이 없어요.';
+  emptyNote.textContent = savedOrdersViewMode === 'all' ? '저장된 주문이 아직 없어요.' : savedOrdersViewMode === 'report' ? '이 정산에는 저장된 주문이 없어요.' : '이 달에는 저장된 주문이 없어요.';
 
   document.getElementById('savedOrderListWrap').innerHTML = orders.map(o => `
     <div class="order-card${selectedOrderIds.has(o.id) ? ' selected' : ''}">
@@ -2147,6 +2212,62 @@ async function renderSavedOrdersTab(){
   }
 
   renderBulkEditPanel();
+}
+
+async function fetchSettlementReports(){
+  const { data } = await sb.from('settlement_reports').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+  return data || [];
+}
+
+async function renderReportsTab(){
+  savedReports = await fetchSettlementReports();
+
+  const emptyNote = document.getElementById('reportsListEmptyNote');
+  emptyNote.style.display = savedReports.length === 0 ? 'block' : 'none';
+
+  const listEl = document.getElementById('reportsListWrap');
+  listEl.innerHTML = '';
+
+  const reportsWithOrders = await Promise.all(savedReports.map(async report => {
+    const orders = await fetchOrdersForReport(report.id);
+    return { report, orders };
+  }));
+
+  reportsWithOrders.forEach(({ report, orders }) => {
+    const gross = orders.reduce((s, o) => s + (o.gross_sales || 0), 0);
+    const profit = orders.reduce((s, o) => s + (o.net_profit || 0), 0);
+    const dates = orders.map(o => o.order_date).filter(Boolean).sort();
+    const period = dates.length
+      ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} ~ ${dates[dates.length - 1]}`)
+      : '저장된 주문 없음';
+
+    const card = document.createElement('div');
+    card.className = 'order-card';
+    card.style.cursor = 'pointer';
+    card.innerHTML = `
+      <div class="order-card-top"><span>${escapeHtml(report.title)}</span><span>${orders.length}건</span></div>
+      <div class="hint" style="margin-top:0; margin-bottom:8px;">${escapeHtml(period)}</div>
+      <div class="order-card-nums"><span>매출<b>${formatWon(gross)}</b></span><span>순이익<b>${formatWon(profit)}</b></span></div>
+    `;
+    card.onclick = () => viewReport(report.id, report.title);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'mini-btn danger';
+    deleteBtn.style.marginTop = '10px';
+    deleteBtn.textContent = '삭제';
+    deleteBtn.onclick = (e) => { e.stopPropagation(); deleteReport(report.id); };
+    card.appendChild(deleteBtn);
+
+    listEl.appendChild(card);
+  });
+}
+
+async function deleteReport(id){
+  if(!confirm('이 정산 제목을 삭제할까요? 저장된 주문들은 삭제되지 않고 주문 목록에 그대로 남아요.')) return;
+  await sb.from('settlement_orders').update({ report_id: null }).eq('report_id', id);
+  await sb.from('settlement_reports').delete().eq('id', id);
+  renderReportsTab();
 }
 
 function savedOrderSummaryHtml(o){
