@@ -485,12 +485,8 @@ function hasCol(map, candidateNames){
 }
 
 // ============ per-platform row parsing -> common normalized structure ============
-function parsePlatformRows(aoa, platform, settings, fileName){
-  const headerIdx = findHeaderRow(aoa);
-  if(headerIdx === -1) return { rows: [], missing: ['상품명'], found: [] };
-  const map = buildNormalizedColMap(aoa[headerIdx]);
-
-  const spec = platform === 'coupang'
+function getPlatformSpec(platform){
+  return platform === 'coupang'
     ? {
         required: [
           { label: '주문일', names: ['주문일'] },
@@ -505,7 +501,125 @@ function parsePlatformRows(aoa, platform, settings, fileName){
           { label: '상품금액', names: ['최종 상품별 총 주문금액', '상품가격', '정산기준금액(A)', '정산기준금액'] },
         ],
       };
+}
 
+// checks a row's required columns aren't just present but actually look like
+// what they claim to be (a date, a money figure) - a bare non-empty check
+// isn't enough to tell platforms apart when a mixed sheet's rows are wider
+// than each other, since a narrower platform's column position can land on
+// some unrelated but non-empty field of a wider row (e.g. 결제위치="MOBILE"
+// sitting at 쿠팡's 결제액 column) and falsely look like a match.
+function rowHasRequiredCols(row, map, spec){
+  return spec.required.every(r => {
+    const v = getCol(row, map, r.names);
+    if(v === null || String(v).trim() === '') return false;
+    if(r.label === '주문일') return parseDateValue(v) !== null;
+    if(r.label === '결제액' || r.label === '상품금액'){
+      const cleaned = String(v).trim().replace(/[₩\\,\s]/g, '');
+      return cleaned !== '' && !isNaN(Number(cleaned));
+    }
+    return true;
+  });
+}
+
+// parses one data row for the given platform/column-map and either pushes a
+// normalized order onto `rows`, folds it into the previous row (Naver's
+// shipping-as-a-pseudo-product-line quirk), or does nothing if the row is
+// missing its required fields. Shared by the single-platform scan in
+// parsePlatformRows and the mixed-platform-per-row scan in parseMixedRows.
+function parseOneRow(row, platform, map, settings, rows, fileName){
+  if(platform === 'coupang'){
+    const name = getCol(row, map, ['등록상품명', '상품명']);
+    const pay = getCol(row, map, ['결제액']);
+    if(name === null || String(name).trim() === '') return;
+    if(pay === null || pay === '') return;
+
+    const productAmount = parseMoney(pay);
+    const shippingAmount = parseMoney(getCol(row, map, ['배송비']));
+    const grossSales = productAmount + shippingAmount;
+    const quantity = Math.max(1, parseMoney(getCol(row, map, ['구매수(수량)', '수량'])) || 1);
+
+    let marketplaceFee = Math.round(productAmount * (settings.coupangRate / 100));
+    let shipRatePct = settings.coupangVat ? settings.coupangShipRate * 1.1 : settings.coupangShipRate;
+    let shippingFee = Math.round(shippingAmount * (shipRatePct / 100));
+    const otherPlatformFee = 0;
+    const hasActualSettlement = false;
+    const settlementAmount = grossSales - marketplaceFee - shippingFee - otherPlatformFee;
+
+    rows.push({
+      platform, orderDate: parseDateValue(getCol(row, map, ['주문일'])),
+      orderNumber: String(getCol(row, map, ['주문번호']) || ''),
+      productName: String(name), optionName: null, quantity,
+      productAmount, shippingAmount, grossSales,
+      marketplaceFee, shippingFee, otherPlatformFee,
+      settlementAmount, hasActualSettlement, sourceFile: fileName,
+    });
+  } else {
+    const name = getCol(row, map, ['상품명']);
+    const amount = getCol(row, map, ['최종 상품별 총 주문금액', '상품가격', '정산기준금액(A)', '정산기준금액']);
+    if(name === null || String(name).trim() === '') return;
+    if(amount === null || amount === '') return;
+
+    const productAmount = parseMoney(amount);
+    const shippingAmount = parseMoney(getCol(row, map, ['배송비 합계']));
+    const grossSales = productAmount + shippingAmount;
+    const quantity = Math.max(1, parseMoney(getCol(row, map, ['수량'])) || 1);
+
+    const commissionNames = ['매출연동 수수료', '매출연동 수수료 합계(C)', '매출연동 수수료 합계'];
+    const pgFeeNames = ['네이버페이 주문관리 수수료', 'Npay 수수료(B)', 'Npay 수수료'];
+    const installmentFeeNames = ['무이자할부 수수료(D)', '무이자할부 수수료'];
+    const settleNames = ['정산예정금액', '정산금액'];
+
+    const actualCommission = hasCol(map, commissionNames) ? parseMoney(getCol(row, map, commissionNames)) : null;
+    const actualPgFee = hasCol(map, pgFeeNames) ? parseMoney(getCol(row, map, pgFeeNames)) : null;
+    const actualInstallmentFee = hasCol(map, installmentFeeNames) ? parseMoney(getCol(row, map, installmentFeeNames)) : null;
+    const actualSettle = hasCol(map, settleNames) ? parseMoney(getCol(row, map, settleNames)) : null;
+
+    let marketplaceFee, otherPlatformFee, shippingFee, settlementAmount, hasActualSettlement;
+    if(!settings.storeOverride && (actualCommission !== null || actualPgFee !== null)){
+      marketplaceFee = Math.abs(actualCommission || 0);
+      otherPlatformFee = Math.abs(actualPgFee || 0) + Math.abs(actualInstallmentFee || 0);
+      shippingFee = 0;
+      hasActualSettlement = actualSettle !== null;
+      settlementAmount = hasActualSettlement ? actualSettle : (grossSales - marketplaceFee - otherPlatformFee);
+    } else {
+      marketplaceFee = Math.round(productAmount * (settings.storeRate / 100));
+      shippingFee = Math.round(shippingAmount * (settings.storeShipRate / 100));
+      otherPlatformFee = 0;
+      hasActualSettlement = false;
+      settlementAmount = grossSales - marketplaceFee - shippingFee - otherPlatformFee;
+    }
+
+    // Naver's per-order settlement export lists shipping as its own
+    // pseudo-product line (상품명 "기본배송비" etc.) right after the real
+    // product, rather than as a shipping-amount column - fold it into the
+    // product line right above it instead of treating it as its own order.
+    if(SHIPPING_LABELS.includes(String(name).trim()) && rows.length > 0){
+      const parent = rows[rows.length - 1];
+      parent.shippingAmount += productAmount;
+      parent.shippingFee += marketplaceFee + otherPlatformFee;
+      parent.grossSales = parent.productAmount + parent.shippingAmount;
+      parent.settlementAmount += settlementAmount;
+      return;
+    }
+
+    rows.push({
+      platform, orderDate: parseDateValue(getCol(row, map, ['주문일시', '결제일', '주문일', '정산기준일'])),
+      orderNumber: String(getCol(row, map, ['상품주문번호', '주문번호']) || ''),
+      productName: String(name), optionName: getCol(row, map, ['옵션정보', '옵션명']) ? String(getCol(row, map, ['옵션정보', '옵션명'])) : null,
+      quantity, productAmount, shippingAmount, grossSales,
+      marketplaceFee, shippingFee, otherPlatformFee,
+      settlementAmount, hasActualSettlement, sourceFile: fileName,
+    });
+  }
+}
+
+function parsePlatformRows(aoa, platform, settings, fileName){
+  const headerIdx = findHeaderRow(aoa);
+  if(headerIdx === -1) return { rows: [], missing: ['상품명'], found: [] };
+  const map = buildNormalizedColMap(aoa[headerIdx]);
+
+  const spec = getPlatformSpec(platform);
   const found = [];
   const missing = [];
   spec.required.forEach(r => {
@@ -515,91 +629,7 @@ function parsePlatformRows(aoa, platform, settings, fileName){
 
   const rows = [];
   for(let r = headerIdx + 1; r < aoa.length; r++){
-    const row = aoa[r] || [];
-    if(platform === 'coupang'){
-      const name = getCol(row, map, ['등록상품명', '상품명']);
-      const pay = getCol(row, map, ['결제액']);
-      if(name === null || String(name).trim() === '') continue;
-      if(pay === null || pay === '') continue;
-
-      const productAmount = parseMoney(pay);
-      const shippingAmount = parseMoney(getCol(row, map, ['배송비']));
-      const grossSales = productAmount + shippingAmount;
-      const quantity = Math.max(1, parseMoney(getCol(row, map, ['구매수(수량)', '수량'])) || 1);
-
-      let marketplaceFee = Math.round(productAmount * (settings.coupangRate / 100));
-      let shipRatePct = settings.coupangVat ? settings.coupangShipRate * 1.1 : settings.coupangShipRate;
-      let shippingFee = Math.round(shippingAmount * (shipRatePct / 100));
-      const otherPlatformFee = 0;
-      const hasActualSettlement = false;
-      const settlementAmount = grossSales - marketplaceFee - shippingFee - otherPlatformFee;
-
-      rows.push({
-        platform, orderDate: parseDateValue(getCol(row, map, ['주문일'])),
-        orderNumber: String(getCol(row, map, ['주문번호']) || ''),
-        productName: String(name), optionName: null, quantity,
-        productAmount, shippingAmount, grossSales,
-        marketplaceFee, shippingFee, otherPlatformFee,
-        settlementAmount, hasActualSettlement, sourceFile: fileName,
-      });
-    } else {
-      const name = getCol(row, map, ['상품명']);
-      const amount = getCol(row, map, ['최종 상품별 총 주문금액', '상품가격', '정산기준금액(A)', '정산기준금액']);
-      if(name === null || String(name).trim() === '') continue;
-      if(amount === null || amount === '') continue;
-
-      const productAmount = parseMoney(amount);
-      const shippingAmount = parseMoney(getCol(row, map, ['배송비 합계']));
-      const grossSales = productAmount + shippingAmount;
-      const quantity = Math.max(1, parseMoney(getCol(row, map, ['수량'])) || 1);
-
-      const commissionNames = ['매출연동 수수료', '매출연동 수수료 합계(C)', '매출연동 수수료 합계'];
-      const pgFeeNames = ['네이버페이 주문관리 수수료', 'Npay 수수료(B)', 'Npay 수수료'];
-      const installmentFeeNames = ['무이자할부 수수료(D)', '무이자할부 수수료'];
-      const settleNames = ['정산예정금액', '정산금액'];
-
-      const actualCommission = hasCol(map, commissionNames) ? parseMoney(getCol(row, map, commissionNames)) : null;
-      const actualPgFee = hasCol(map, pgFeeNames) ? parseMoney(getCol(row, map, pgFeeNames)) : null;
-      const actualInstallmentFee = hasCol(map, installmentFeeNames) ? parseMoney(getCol(row, map, installmentFeeNames)) : null;
-      const actualSettle = hasCol(map, settleNames) ? parseMoney(getCol(row, map, settleNames)) : null;
-
-      let marketplaceFee, otherPlatformFee, shippingFee, settlementAmount, hasActualSettlement;
-      if(!settings.storeOverride && (actualCommission !== null || actualPgFee !== null)){
-        marketplaceFee = Math.abs(actualCommission || 0);
-        otherPlatformFee = Math.abs(actualPgFee || 0) + Math.abs(actualInstallmentFee || 0);
-        shippingFee = 0;
-        hasActualSettlement = actualSettle !== null;
-        settlementAmount = hasActualSettlement ? actualSettle : (grossSales - marketplaceFee - otherPlatformFee);
-      } else {
-        marketplaceFee = Math.round(productAmount * (settings.storeRate / 100));
-        shippingFee = Math.round(shippingAmount * (settings.storeShipRate / 100));
-        otherPlatformFee = 0;
-        hasActualSettlement = false;
-        settlementAmount = grossSales - marketplaceFee - shippingFee - otherPlatformFee;
-      }
-
-      // Naver's per-order settlement export lists shipping as its own
-      // pseudo-product line (상품명 "기본배송비" etc.) right after the real
-      // product, rather than as a shipping-amount column - fold it into the
-      // product line right above it instead of treating it as its own order.
-      if(SHIPPING_LABELS.includes(String(name).trim()) && rows.length > 0){
-        const parent = rows[rows.length - 1];
-        parent.shippingAmount += productAmount;
-        parent.shippingFee += marketplaceFee + otherPlatformFee;
-        parent.grossSales = parent.productAmount + parent.shippingAmount;
-        parent.settlementAmount += settlementAmount;
-        continue;
-      }
-
-      rows.push({
-        platform, orderDate: parseDateValue(getCol(row, map, ['주문일시', '결제일', '주문일', '정산기준일'])),
-        orderNumber: String(getCol(row, map, ['상품주문번호', '주문번호']) || ''),
-        productName: String(name), optionName: getCol(row, map, ['옵션정보', '옵션명']) ? String(getCol(row, map, ['옵션정보', '옵션명'])) : null,
-        quantity, productAmount, shippingAmount, grossSales,
-        marketplaceFee, shippingFee, otherPlatformFee,
-        settlementAmount, hasActualSettlement, sourceFile: fileName,
-      });
-    }
+    parseOneRow(aoa[r] || [], platform, map, settings, rows, fileName);
   }
   return { rows, missing: [], found };
 }
@@ -789,17 +819,18 @@ function submitPastedData(){
 
 function addFile(file){
   const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
-  // re-uploading a file with the same name (e.g. after a restored session) replaces
-  // it instead of adding a duplicate, so re-analyzing doesn't double-count its orders
-  const existingIdx = uploadedFiles.findIndex(f => f.name === file.name);
-  const id = existingIdx !== -1 ? uploadedFiles[existingIdx].id : 'f' + (++fileSeq);
+  // re-uploading a file with the same name (e.g. after a restored session, or
+  // re-analyzing) replaces all of its previous entries - including any it was
+  // split into by platform - instead of adding duplicates that double-count
+  const existing = uploadedFiles.filter(f => f.name === file.name || f.name.indexOf(file.name + ' - ') === 0);
+  const id = existing.length ? existing[0].id : 'f' + (++fileSeq);
+  if(existing.length) uploadedFiles = uploadedFiles.filter(f => !existing.includes(f));
   const entry = {
     id, name: file.name, platform: 'unknown', rows: [], error: null,
     dateMin: null, dateMax: null, productCount: 0,
     needsPassword: false, encryptedBytes: null,
   };
-  if(existingIdx !== -1) uploadedFiles[existingIdx] = entry;
-  else uploadedFiles.push(entry);
+  uploadedFiles.push(entry);
 
   if(ext !== '.xlsx' && ext !== '.xls'){
     entry.error = '엑셀(.xlsx, .xls) 파일만 업로드할 수 있어요.';
@@ -899,7 +930,7 @@ function loadFileRows(entry, aoa){
 
   const headerRows = findAllHeaderRows(aoa);
   if(headerRows.length > 1){
-    splitEntryByPlatform(entry, aoa, headerRows);
+    parseMixedPlatformEntry(entry, aoa, headerRows);
     return;
   }
 
@@ -915,30 +946,54 @@ function loadFileRows(entry, aoa){
   reparseFile(entry);
 }
 
-function splitEntryByPlatform(entry, aoa, headerRows){
-  headerRows.forEach((h, i) => {
-    const segAoa = aoa.slice(h.index, i + 1 < headerRows.length ? headerRows[i + 1].index : aoa.length);
+// handles data where rows from different platforms are mixed row-by-row
+// (not grouped in blocks) - e.g. a seller's own combined tracking sheet with
+// 쿠팡/스마트스토어 orders interleaved by date, each still following its
+// native platform's column layout. Each detected header's column map is
+// tried against every row; whichever one has that row's required columns
+// filled decides which platform (and therefore which columns) that row is
+// read with, regardless of where it sits relative to the header rows.
+function parseMixedPlatformEntry(entry, aoa, headerRows){
+  const settings = getSettings();
+  const headerIndexSet = new Set(headerRows.map(h => h.index));
+  const templates = headerRows.map(h => ({
+    platform: h.platform,
+    map: buildNormalizedColMap(aoa[h.index]),
+    spec: getPlatformSpec(h.platform),
+  }));
+
+  const byPlatform = {};
+  for(let r = 0; r < aoa.length; r++){
+    if(headerIndexSet.has(r)) continue;
+    const row = aoa[r] || [];
+    if(!row.some(c => c !== null && c !== undefined && String(c).trim() !== '')) continue;
+    const template = templates.find(t => rowHasRequiredCols(row, t.map, t.spec));
+    if(!template) continue;
+    if(!byPlatform[template.platform]) byPlatform[template.platform] = [];
+    parseOneRow(row, template.platform, template.map, settings, byPlatform[template.platform], entry.name);
+  }
+
+  const platforms = Object.keys(byPlatform).filter(p => byPlatform[p].length > 0);
+  if(platforms.length === 0){
+    entry.error = '분석할 주문이 없습니다.';
+    entry.rows = [];
+    return;
+  }
+
+  platforms.forEach((platform, i) => {
     const target = i === 0 ? entry : {
-      id: entry.id + '-' + (i + 1), name: `${entry.name} - ${PLATFORM_LABELS[h.platform] || h.platform}`,
+      id: entry.id + '-' + (i + 1), name: `${entry.name} - ${PLATFORM_LABELS[platform] || platform}`,
       platform: 'unknown', rows: [], error: null,
       dateMin: null, dateMax: null, productCount: 0,
       needsPassword: false, encryptedBytes: null,
     };
-    target.platform = h.platform;
-    target.aoa = segAoa;
-    reparseFile(target);
+    target.platform = platform;
+    finalizeEntryRows(target, byPlatform[platform]);
     if(i > 0) uploadedFiles.push(target);
   });
 }
 
-function reparseFile(entry){
-  if(!entry.aoa || entry.platform === 'unknown'){ return; }
-  const { rows, missing } = parsePlatformRows(entry.aoa, entry.platform, getSettings(), entry.name);
-  if(missing.length){
-    entry.error = '정산에 필요한 열을 찾지 못했어요. (' + missing.join(', ') + ')';
-    entry.rows = [];
-    return;
-  }
+function finalizeEntryRows(entry, rows){
   if(rows.length === 0){
     entry.error = '분석할 주문이 없습니다.';
     entry.rows = [];
@@ -950,6 +1005,17 @@ function reparseFile(entry){
   entry.dateMin = dates.length ? new Date(Math.min(...dates)) : null;
   entry.dateMax = dates.length ? new Date(Math.max(...dates)) : null;
   entry.productCount = new Set(rows.map(r => r.productName)).size;
+}
+
+function reparseFile(entry){
+  if(!entry.aoa || entry.platform === 'unknown'){ return; }
+  const { rows, missing } = parsePlatformRows(entry.aoa, entry.platform, getSettings(), entry.name);
+  if(missing.length){
+    entry.error = '정산에 필요한 열을 찾지 못했어요. (' + missing.join(', ') + ')';
+    entry.rows = [];
+    return;
+  }
+  finalizeEntryRows(entry, rows);
 }
 
 function removeFile(id){
