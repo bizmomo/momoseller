@@ -313,15 +313,17 @@
 
   <div id="ordersTab" style="display:none;">
     <div class="card">
-      <div class="period-chip-row" id="periodChipRow">
-        <button type="button" class="period-chip active" data-period="all" onclick="applyPeriodFilter('all')">전체</button>
-        <button type="button" class="period-chip" data-period="today" onclick="applyPeriodFilter('today')">오늘</button>
-        <button type="button" class="period-chip" data-period="yesterday" onclick="applyPeriodFilter('yesterday')">어제</button>
-        <button type="button" class="period-chip" data-period="week" onclick="applyPeriodFilter('week')">1주</button>
-        <button type="button" class="period-chip" data-period="month1" onclick="applyPeriodFilter('month1')">1달</button>
-        <button type="button" class="period-chip" data-period="month6" onclick="applyPeriodFilter('month6')">6달</button>
-        <button type="button" class="period-chip" data-period="year1" onclick="applyPeriodFilter('year1')">1년</button>
-        <button type="button" class="period-chip" data-period="custom" onclick="applyPeriodFilter('custom')">기간지정</button>
+      <div style="display:flex; gap:6px; align-items:stretch;">
+        <div class="period-chip-row" id="periodChipRow" style="flex:1; min-width:0;">
+          <button type="button" class="period-chip active" data-period="all" onclick="applyPeriodFilter('all')">전체</button>
+          <button type="button" class="period-chip" data-period="today" onclick="applyPeriodFilter('today')">오늘</button>
+          <button type="button" class="period-chip" data-period="yesterday" onclick="applyPeriodFilter('yesterday')">어제</button>
+          <button type="button" class="period-chip" data-period="week" onclick="applyPeriodFilter('week')">1주</button>
+          <button type="button" class="period-chip" data-period="month1" onclick="applyPeriodFilter('month1')">1달</button>
+          <button type="button" class="period-chip" data-period="month6" onclick="applyPeriodFilter('month6')">6달</button>
+          <button type="button" class="period-chip" data-period="year1" onclick="applyPeriodFilter('year1')">1년</button>
+        </div>
+        <button type="button" class="period-chip" data-period="custom" onclick="applyPeriodFilter('custom')" style="flex-shrink:0;">📅 기간지정</button>
       </div>
       <div class="hint" id="savedOrdersPeriodLabel" style="margin-top:8px; margin-bottom:0; display:none;"></div>
       <div id="customRangeWrap" style="display:none; margin-top:12px;">
