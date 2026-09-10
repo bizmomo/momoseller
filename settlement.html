@@ -18,6 +18,7 @@
   }
   .upload-add:hover{ border-color:var(--accent); }
   .file-row{ border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-top:10px; background:#fff; }
+  .file-row.selected{ border-color:var(--teal); background:#F3F8F7; }
   .file-row-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
   .file-row-name{ font-size:13.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .file-row-meta{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; line-height:1.6; }
@@ -204,8 +205,15 @@
   </div>
 
   <div class="card" id="costCard" style="display:none;">
-    <h2>상품 원가</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+      <h2 style="margin:0;">상품 원가</h2>
+      <div style="display:flex; gap:6px;">
+        <button class="mini-btn" id="costSelectAllBtn" onclick="selectAllVisibleCostItems()" style="display:none;">전체 선택</button>
+        <button class="mini-btn" id="costSelectModeBtn" onclick="toggleCostSelectMode()">선택해서 일괄 등록</button>
+      </div>
+    </div>
     <div class="hint" id="costSummaryText" style="margin-top:0;"></div>
+    <div id="bulkCostEditPanel" class="bulk-edit-panel" style="display:none;"></div>
     <div id="unregisteredCostList"></div>
   </div>
 
@@ -375,6 +383,13 @@ let costMap = {};         // costKey -> { unitCost, packagingCost }
 let otherExpenses = [];   // rows from other_expenses for the current user
 let unregisteredCostItems = [];
 let lastUnallocated = { adCost: 0, otherCost: 0 };
+let costSelectMode = false;
+let selectedCostKeys = new Set();
+const BULK_COST_FIELDS = [
+  { key: 'unitCost', label: '원가' },
+  { key: 'packagingCost', label: '포장비' },
+  { key: 'courierCost', label: '택배비' },
+];
 let savedOrdersViewYear = null;
 let savedOrdersViewMonth = null;
 let savedOrdersViewMode = 'month';
@@ -1171,7 +1186,18 @@ function applyCostsAndExpenses(orders){
       o.productCost = 0;
       o.packagingCost = 0;
       o.courierCost = 0;
-      missingMap.set(key, { platform: o.platform, productName: o.productName, optionName: o.optionName });
+      if(missingMap.has(key)){
+        const item = missingMap.get(key);
+        if(o.orderDate){
+          if(!item.dateMin || o.orderDate < item.dateMin) item.dateMin = o.orderDate;
+          if(!item.dateMax || o.orderDate > item.dateMax) item.dateMax = o.orderDate;
+        }
+      } else {
+        missingMap.set(key, {
+          platform: o.platform, productName: o.productName, optionName: o.optionName,
+          dateMin: o.orderDate || null, dateMax: o.orderDate || null,
+        });
+      }
     }
     o.allocatedAdCost = 0;
     o.allocatedOtherCost = 0;
@@ -1407,17 +1433,60 @@ function renderCostCard(){
   document.getElementById('costCard').style.display = 'block';
   document.getElementById('costSummaryText').textContent = `자동 매칭 완료 ${matchedCount}개 · 원가 미등록 ${missingCount}개`;
 
+  const validKeys = new Set(unregisteredCostItems.map(item => costKey(item.platform, item.productName, item.optionName)));
+  selectedCostKeys = new Set(Array.from(selectedCostKeys).filter(k => validKeys.has(k)));
+
   const listEl = document.getElementById('unregisteredCostList');
   listEl.innerHTML = '';
   unregisteredCostItems.forEach(item => {
+    const key = costKey(item.platform, item.productName, item.optionName);
     const row = document.createElement('div');
-    row.className = 'file-row';
+    row.className = 'file-row' + (costSelectMode && selectedCostKeys.has(key) ? ' selected' : '');
+
+    const top = document.createElement('div');
+    top.style.display = 'flex';
+    top.style.alignItems = 'flex-start';
+    top.style.gap = '8px';
+
+    if(costSelectMode){
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'cost-select-checkbox';
+      checkbox.style.pointerEvents = 'none';
+      checkbox.style.marginTop = '3px';
+      checkbox.checked = selectedCostKeys.has(key);
+      top.appendChild(checkbox);
+    }
+
+    const textCol = document.createElement('div');
+    textCol.style.flex = '1';
+    textCol.style.minWidth = '0';
 
     const label = document.createElement('div');
     label.className = 'file-row-name';
     label.style.whiteSpace = 'normal';
     label.textContent = item.productName + (item.optionName ? ` (${item.optionName})` : '') + ` · ${PLATFORM_LABELS[item.platform]}`;
-    row.appendChild(label);
+    textCol.appendChild(label);
+
+    if(item.dateMin){
+      const meta = document.createElement('div');
+      meta.className = 'file-row-meta';
+      meta.style.marginTop = '2px';
+      meta.textContent = item.dateMin.getTime() === item.dateMax.getTime()
+        ? `주문일 ${formatDateFull(item.dateMin)}`
+        : `주문일 ${formatDateFull(item.dateMin)} ~ ${formatDateFull(item.dateMax)}`;
+      textCol.appendChild(meta);
+    }
+
+    top.appendChild(textCol);
+    row.appendChild(top);
+
+    if(costSelectMode){
+      row.style.cursor = 'pointer';
+      row.onclick = () => toggleCostItemSelect(key);
+      listEl.appendChild(row);
+      return;
+    }
 
     const inputRow = document.createElement('div');
     inputRow.className = 'cost-input-row';
@@ -1464,6 +1533,139 @@ function renderCostCard(){
 
     listEl.appendChild(row);
   });
+
+  const costSelectAllBtn = document.getElementById('costSelectAllBtn');
+  if(costSelectMode && unregisteredCostItems.length > 0){
+    const allSelected = unregisteredCostItems.every(item => selectedCostKeys.has(costKey(item.platform, item.productName, item.optionName)));
+    costSelectAllBtn.textContent = allSelected ? '전체 해제' : '전체 선택';
+  }
+
+  renderBulkCostPanel();
+}
+
+function toggleCostSelectMode(){
+  costSelectMode = !costSelectMode;
+  selectedCostKeys.clear();
+  document.getElementById('costSelectModeBtn').textContent = costSelectMode ? '선택 취소' : '선택해서 일괄 등록';
+  document.getElementById('costSelectModeBtn').classList.toggle('active', costSelectMode);
+  document.getElementById('costSelectAllBtn').style.display = costSelectMode ? 'inline-block' : 'none';
+  document.getElementById('costSelectAllBtn').textContent = '전체 선택';
+  renderCostCard();
+}
+
+function selectAllVisibleCostItems(){
+  const allSelected = unregisteredCostItems.length > 0 && unregisteredCostItems.every(item => selectedCostKeys.has(costKey(item.platform, item.productName, item.optionName)));
+  if(allSelected){
+    selectedCostKeys.clear();
+  } else {
+    unregisteredCostItems.forEach(item => selectedCostKeys.add(costKey(item.platform, item.productName, item.optionName)));
+  }
+  renderCostCard();
+}
+
+function toggleCostItemSelect(key){
+  if(selectedCostKeys.has(key)) selectedCostKeys.delete(key);
+  else selectedCostKeys.add(key);
+  renderCostCard();
+}
+
+function clearCostSelection(){
+  selectedCostKeys.clear();
+  renderCostCard();
+}
+
+function renderBulkCostPanel(){
+  const panel = document.getElementById('bulkCostEditPanel');
+  if(!panel) return;
+  const count = selectedCostKeys.size;
+
+  if(!costSelectMode || count === 0){
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="hint" style="margin-top:0;">체크한 항목만 선택한 ${count}개 상품 전체에 같은 값으로 한번에 등록돼요.</div>
+    ${BULK_COST_FIELDS.map(f => `
+      <div class="bulk-field-row">
+        <input type="checkbox" id="bulkCostApply-${f.key}">
+        <label for="bulkCostApply-${f.key}">${f.label}</label>
+        <input type="number" id="bulkCostValue-${f.key}" placeholder="새 값" min="0">
+      </div>
+    `).join('')}
+    <div class="hint" id="bulkCostEditStatus" style="margin-top:8px;"></div>
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button type="button" class="primary" onclick="submitBulkCostEdit()">일괄 등록 (${count}개)</button>
+      <button type="button" class="secondary" onclick="clearCostSelection()">선택 해제</button>
+    </div>
+  `;
+  panel.style.display = 'block';
+}
+
+async function submitBulkCostEdit(){
+  const statusEl = document.getElementById('bulkCostEditStatus');
+  const changes = BULK_COST_FIELDS.filter(f => document.getElementById(`bulkCostApply-${f.key}`).checked);
+  if(changes.length === 0){
+    statusEl.textContent = '등록할 항목을 체크해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  const values = {};
+  for(const f of changes){
+    const raw = document.getElementById(`bulkCostValue-${f.key}`).value;
+    const n = Number(raw);
+    if(raw === '' || isNaN(n) || n < 0){
+      statusEl.textContent = `${f.label}에 넣을 값을 입력해주세요.`;
+      statusEl.style.color = 'var(--error)';
+      return;
+    }
+    values[f.key] = n;
+  }
+
+  const keys = Array.from(selectedCostKeys);
+  const items = keys.map(k => unregisteredCostItems.find(item => costKey(item.platform, item.productName, item.optionName) === k)).filter(Boolean);
+  statusEl.textContent = `${items.length}개 저장하는 중...`;
+  statusEl.style.color = '';
+
+  const results = await Promise.all(items.map(item => {
+    const existing = costMap[costKey(item.platform, item.productName, item.optionName)] || { unitCost: 0, packagingCost: 0, courierCost: 0 };
+    const merged = Object.assign({}, existing, values);
+    return sb.from('product_costs').upsert({
+      user_id: currentUser.id,
+      platform: item.platform,
+      product_name: item.productName,
+      option_name: item.optionName || '',
+      unit_cost: merged.unitCost,
+      packaging_cost: merged.packagingCost,
+      courier_cost: merged.courierCost,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,platform,product_name,option_name' }).then(res => ({ res, item, merged }));
+  }));
+
+  const failedCount = results.filter(r => r.res.error).length;
+  results.filter(r => !r.res.error).forEach(({ item, merged }) => {
+    costMap[costKey(item.platform, item.productName, item.optionName)] = merged;
+  });
+
+  if(failedCount > 0){
+    statusEl.textContent = `${failedCount}개 저장에 실패했어요. 다시 시도해주세요.`;
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  costSelectMode = false;
+  selectedCostKeys.clear();
+  document.getElementById('costSelectModeBtn').textContent = '선택해서 일괄 등록';
+  document.getElementById('costSelectModeBtn').classList.remove('active');
+  document.getElementById('costSelectAllBtn').style.display = 'none';
+
+  if(analyzedOrders.length){
+    applyCostsAndExpenses(analyzedOrders);
+    renderCostCard();
+    renderResults();
+  }
 }
 
 function renderResults(){
