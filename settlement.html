@@ -79,9 +79,9 @@
   .lock-title{ font-size:13.5px; font-weight:500; color:var(--accent-deep); }
   .lock-row{ display:flex; gap:8px; margin-top:8px; }
   .lock-row input{ flex:1; }
-  .month-nav{ display:flex; align-items:center; justify-content:center; gap:24px; }
-  .month-nav .icon-btn{ width:36px; height:36px; }
-  .month-nav .month-label{ font-size:17px; font-weight:700; font-family:'Noto Serif KR', serif; min-width:110px; text-align:center; }
+  .period-chip-row{ display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
+  .period-chip{ flex-shrink:0; white-space:nowrap; padding:7px 12px; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:14px; cursor:pointer; }
+  .period-chip.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
 </style>
 </head>
 <body>
@@ -99,26 +99,32 @@
   </div>
 
   <div class="tab-row">
-    <button class="tab-btn active" data-page-tab="upload" onclick="setPageTab('upload')">엑셀 업로드</button>
-    <button class="tab-btn" data-page-tab="orders" onclick="setPageTab('orders')">주문 목록</button>
+    <button class="tab-btn active" data-page-tab="upload" onclick="setPageTab('upload')">정산 등록</button>
+    <button class="tab-btn" data-page-tab="orders" onclick="setPageTab('orders')">저장된 정산</button>
   </div>
 
   <div id="uploadTab">
   <div class="card" id="uploadCard">
-    <h2>엑셀 파일 업로드</h2>
+    <h2>정산 등록</h2>
+    <div class="hint" style="margin-top:0;">엑셀 파일을 올리거나, 표를 복사해서 붙여넣거나, 직접 입력해서 정산 데이터를 등록할 수 있어요.</div>
     <div class="upload-add" onclick="document.getElementById('fileInput').click()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
       <span>엑셀 파일 추가</span>
     </div>
     <input type="file" id="fileInput" accept=".xlsx,.xls" multiple style="display:none;">
 
-    <button type="button" class="mini-btn" style="margin-top:10px;" onclick="togglePasteForm()">📋 엑셀에서 복사해서 붙여넣기</button>
+    <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+      <button type="button" class="mini-btn" onclick="togglePasteForm()">📋 엑셀에서 복사해서 붙여넣기</button>
+      <button type="button" class="mini-btn" id="addOrderBtn" onclick="toggleAddOrderForm()">✍️ 직접 입력으로 추가</button>
+    </div>
     <div id="pasteFormWrap" style="display:none; margin-top:10px;">
       <div class="hint" style="margin-top:0;">엑셀(또는 구글 시트)에서 제목행을 포함해서 표를 복사한 다음, 아래에 붙여넣어주세요.</div>
       <textarea id="pasteTextarea" rows="6" placeholder="여기에 붙여넣으세요" style="min-height:120px;"></textarea>
       <button type="button" class="primary" style="margin-top:8px;" onclick="submitPastedData()">붙여넣은 데이터 추가하기</button>
       <div class="status" id="pasteStatus"></div>
     </div>
+    <div id="addOrderFormWrap" style="display:none; margin-top:10px; padding-top:14px; border-top:1px dashed var(--line);"></div>
+    <div class="hint" id="manualAddStatus" style="margin-top:0;"></div>
 
     <div id="fileList"></div>
 
@@ -307,29 +313,24 @@
 
   <div id="ordersTab" style="display:none;">
     <div class="card">
-      <div id="savedOrdersModeTabs" class="tab-row" style="margin-bottom:0;">
-        <button class="tab-btn active" data-order-view="month" onclick="setSavedOrdersViewMode('month')">기간별로 보기</button>
-        <button class="tab-btn" data-order-view="all" onclick="setSavedOrdersViewMode('all')">전체 보기</button>
+      <div class="period-chip-row" id="periodChipRow">
+        <button type="button" class="period-chip active" data-period="all" onclick="applyPeriodFilter('all')">전체</button>
+        <button type="button" class="period-chip" data-period="today" onclick="applyPeriodFilter('today')">오늘</button>
+        <button type="button" class="period-chip" data-period="yesterday" onclick="applyPeriodFilter('yesterday')">어제</button>
+        <button type="button" class="period-chip" data-period="week" onclick="applyPeriodFilter('week')">1주</button>
+        <button type="button" class="period-chip" data-period="month1" onclick="applyPeriodFilter('month1')">1달</button>
+        <button type="button" class="period-chip" data-period="month6" onclick="applyPeriodFilter('month6')">6달</button>
+        <button type="button" class="period-chip" data-period="year1" onclick="applyPeriodFilter('year1')">1년</button>
+        <button type="button" class="period-chip" data-period="custom" onclick="applyPeriodFilter('custom')">기간지정</button>
       </div>
-      <div id="savedOrdersMonthNav">
-        <div class="month-nav" style="margin-top:14px;">
-          <button class="icon-btn" onclick="changeSavedOrdersMonth(-1)" aria-label="이전 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
-          <div class="month-label" id="savedOrdersMonthLabel">-</div>
-          <button class="icon-btn" onclick="changeSavedOrdersMonth(1)" aria-label="다음 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      <div class="hint" id="savedOrdersPeriodLabel" style="margin-top:8px; margin-bottom:0; display:none;"></div>
+      <div id="customRangeWrap" style="display:none; margin-top:12px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div id="rangeStartWrap" style="flex:1; min-width:0;"></div>
+          <span>~</span>
+          <div id="rangeEndWrap" style="flex:1; min-width:0;"></div>
         </div>
-        <div class="field-block" style="margin-top:12px; margin-bottom:0;">
-          <select id="jumpToMonthInput"></select>
-        </div>
-        <button class="secondary" onclick="jumpToSavedOrdersMonth()">선택한 달로 바로 이동</button>
-        <div class="field-block" style="margin-top:16px; margin-bottom:0;">
-          <label>기간 직접 선택</label>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <div id="rangeStartWrap" style="flex:1; min-width:0;"></div>
-            <span>~</span>
-            <div id="rangeEndWrap" style="flex:1; min-width:0;"></div>
-          </div>
-        </div>
-        <button class="secondary" onclick="applyCustomOrdersRange()">이 기간으로 보기</button>
+        <button class="secondary" style="margin-top:8px;" onclick="applyCustomOrdersRange()">이 기간으로 보기</button>
       </div>
       <div class="field-block" id="storeFilterWrap" style="margin-top:16px; margin-bottom:0;">
         <label for="storeFilterSelect">상점 (제목 붙여 저장한 정산)</label>
@@ -346,14 +347,12 @@
         <div style="display:flex; gap:6px;">
           <button class="mini-btn" id="selectAllBtn" onclick="selectAllVisibleOrders()" style="display:none;">전체 선택</button>
           <button class="mini-btn" id="selectModeBtn" onclick="toggleSelectMode()">선택해서 일괄 수정</button>
-          <button class="mini-btn" id="addOrderBtn" onclick="toggleAddOrderForm()">+ 직접 입력</button>
         </div>
       </div>
-      <div class="hint" style="margin-top:0; margin-bottom:12px;" id="savedOrderListHint">이 달에 저장된 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.</div>
-      <div id="addOrderFormWrap" style="display:none; margin-bottom:18px; padding-bottom:18px; border-bottom:1px dashed var(--line);"></div>
+      <div class="hint" style="margin-top:0; margin-bottom:12px;" id="savedOrderListHint">지금까지 저장된 모든 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.</div>
       <div id="bulkEditPanel" class="bulk-edit-panel" style="display:none;"></div>
       <div id="savedOrderListWrap"></div>
-      <div class="hint" id="savedOrderListEmptyNote" style="display:none; text-align:center;">이 달에는 저장된 주문이 없어요.</div>
+      <div class="hint" id="savedOrderListEmptyNote" style="display:none; text-align:center;">저장된 주문이 아직 없어요.</div>
     </div>
   </div>
 
@@ -380,7 +379,6 @@ async function init(){
   await Promise.all([loadCostMap(), loadOtherExpenses()]);
   renderExpenseList();
   loadUploadDraft();
-  populateMonthSelect(document.getElementById('jumpToMonthInput'), 36);
   setupOrdersRangePickers();
 }
 
@@ -391,19 +389,6 @@ function setupOrdersRangePickers(){
   rangeEndInput = buildDateSelectInput(formatDateISO(today));
   document.getElementById('rangeStartWrap').appendChild(rangeStartInput.wrapEl);
   document.getElementById('rangeEndWrap').appendChild(rangeEndInput.wrapEl);
-}
-
-function populateMonthSelect(selectEl, monthsBack){
-  const today = new Date();
-  let y = today.getFullYear(), m = today.getMonth() + 1;
-  selectEl.innerHTML = '';
-  for(let i = 0; i <= monthsBack; i++){
-    const opt = document.createElement('option');
-    opt.value = `${y}-${String(m).padStart(2, '0')}`;
-    opt.textContent = `${y}년 ${m}월`;
-    selectEl.appendChild(opt);
-    m--; if(m < 1){ m = 12; y--; }
-  }
 }
 
 // ============ state ============
@@ -423,10 +408,8 @@ const BULK_COST_FIELDS = [
   { key: 'packagingCost', label: '포장비' },
   { key: 'courierCost', label: '택배비' },
 ];
-let savedOrdersViewYear = null;
-let savedOrdersViewMonth = null;
-let savedOrdersViewMode = 'month'; // 'month' (기간별) | 'all' (전체)
-let customRangeStart = null; // set when a custom (non-calendar-month) period is applied
+let periodFilter = 'all'; // 'all' | 'today' | 'yesterday' | 'week' | 'month1' | 'month6' | 'year1' | 'custom'
+let customRangeStart = null; // set when 'custom' period is applied
 let customRangeEnd = null;
 let rangeStartInput = null; // buildDateSelectInput proxies, set up once in init()
 let rangeEndInput = null;
@@ -1495,11 +1478,6 @@ async function setPageTab(tab){
   document.getElementById('uploadTab').style.display = tab === 'upload' ? 'block' : 'none';
   document.getElementById('ordersTab').style.display = tab === 'orders' ? 'block' : 'none';
   if(tab === 'orders'){
-    if(!savedOrdersViewYear){
-      const today = new Date();
-      savedOrdersViewYear = today.getFullYear();
-      savedOrdersViewMonth = today.getMonth() + 1;
-    }
     await populateStoreFilter();
     renderSavedOrdersTab();
   }
@@ -2135,21 +2113,33 @@ async function fetchSavedOrdersInRange(start, end){
   return data || [];
 }
 
-function changeSavedOrdersMonth(delta){
-  customRangeStart = null; customRangeEnd = null;
-  savedOrdersViewMonth += delta;
-  if(savedOrdersViewMonth > 12){ savedOrdersViewMonth = 1; savedOrdersViewYear++; }
-  if(savedOrdersViewMonth < 1){ savedOrdersViewMonth = 12; savedOrdersViewYear--; }
-  renderSavedOrdersTab();
+function computePeriodRange(key){
+  const today = new Date();
+  const end = formatDateISO(today);
+  const d = new Date(today);
+  if(key === 'today') return { start: end, end };
+  if(key === 'yesterday'){ d.setDate(d.getDate() - 1); const s = formatDateISO(d); return { start: s, end: s }; }
+  if(key === 'week'){ d.setDate(d.getDate() - 6); return { start: formatDateISO(d), end }; }
+  if(key === 'month1'){ d.setMonth(d.getMonth() - 1); return { start: formatDateISO(d), end }; }
+  if(key === 'month6'){ d.setMonth(d.getMonth() - 6); return { start: formatDateISO(d), end }; }
+  if(key === 'year1'){ d.setFullYear(d.getFullYear() - 1); return { start: formatDateISO(d), end }; }
+  return null;
 }
 
-function jumpToSavedOrdersMonth(){
-  const val = document.getElementById('jumpToMonthInput').value;
-  if(!val) return;
-  customRangeStart = null; customRangeEnd = null;
-  const [y, m] = val.split('-').map(Number);
-  savedOrdersViewYear = y;
-  savedOrdersViewMonth = m;
+function syncPeriodChipUI(){
+  document.querySelectorAll('.period-chip[data-period]').forEach(b => b.classList.toggle('active', b.dataset.period === periodFilter));
+  document.getElementById('customRangeWrap').style.display = periodFilter === 'custom' ? 'block' : 'none';
+}
+
+function applyPeriodFilter(key){
+  periodFilter = key;
+  if(key !== 'custom'){
+    customRangeStart = null; customRangeEnd = null;
+  } else if(!customRangeStart || !customRangeEnd){
+    customRangeStart = rangeStartInput.value;
+    customRangeEnd = rangeEndInput.value;
+  }
+  syncPeriodChipUI();
   renderSavedOrdersTab();
 }
 
@@ -2167,13 +2157,8 @@ function applyCustomOrdersRange(){
 }
 
 async function goToSavedOrdersForAnalysis(){
-  const dates = analyzedOrders.map(o => o.orderDate).filter(Boolean);
-  if(dates.length === 0) return;
-  const earliest = new Date(Math.min(...dates));
-  savedOrdersViewYear = earliest.getFullYear();
-  savedOrdersViewMonth = earliest.getMonth() + 1;
-  customRangeStart = null; customRangeEnd = null;
-  setSavedOrdersViewMode('month');
+  if(!analyzedOrders.some(o => o.orderDate)) return;
+  applyPeriodFilter('all');
   await setPageTab('orders');
   if(lastSavedReportId){
     storeFilterValue = lastSavedReportId;
@@ -2184,16 +2169,6 @@ async function goToSavedOrdersForAnalysis(){
   }
 }
 
-function setSavedOrdersViewMode(mode){
-  savedOrdersViewMode = mode;
-  document.querySelectorAll('.tab-btn[data-order-view]').forEach(b => b.classList.toggle('active', b.dataset.orderView === mode));
-  document.getElementById('savedOrdersMonthNav').style.display = mode === 'month' ? 'block' : 'none';
-  document.getElementById('savedOrderListHint').textContent = mode === 'all'
-    ? '지금까지 저장된 모든 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.'
-    : '이 기간에 저장된 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.';
-  renderSavedOrdersTab();
-}
-
 async function fetchAllSavedOrders(){
   const { data } = await sb.from('settlement_orders').select('*').eq('user_id', currentUser.id);
   return data || [];
@@ -2201,21 +2176,25 @@ async function fetchAllSavedOrders(){
 
 async function renderSavedOrdersTab(){
   let orders;
-  if(savedOrdersViewMode === 'all'){
+  let periodLabel = '';
+  if(periodFilter === 'all'){
     orders = await fetchAllSavedOrders();
-  } else {
-    let start, end, label;
+  } else if(periodFilter === 'custom'){
     if(customRangeStart && customRangeEnd){
-      start = customRangeStart; end = customRangeEnd;
-      label = start === end ? start : `${start} ~ ${end}`;
+      orders = await fetchSavedOrdersInRange(customRangeStart, customRangeEnd);
+      periodLabel = customRangeStart === customRangeEnd ? customRangeStart : `${customRangeStart} ~ ${customRangeEnd}`;
     } else {
-      const r = monthRangeISO(savedOrdersViewYear, savedOrdersViewMonth);
-      start = r.start; end = r.end;
-      label = `${savedOrdersViewYear}년 ${savedOrdersViewMonth}월`;
+      orders = [];
     }
-    document.getElementById('savedOrdersMonthLabel').textContent = label;
+  } else {
+    const { start, end } = computePeriodRange(periodFilter);
     orders = await fetchSavedOrdersInRange(start, end);
+    periodLabel = start === end ? start : `${start} ~ ${end}`;
   }
+
+  const periodLabelEl = document.getElementById('savedOrdersPeriodLabel');
+  if(periodLabel){ periodLabelEl.textContent = periodLabel; periodLabelEl.style.display = 'block'; }
+  else { periodLabelEl.style.display = 'none'; }
 
   if(storeFilterValue === '__untitled__') orders = orders.filter(o => !o.report_id);
   else if(storeFilterValue && storeFilterValue !== 'all') orders = orders.filter(o => o.report_id === storeFilterValue);
@@ -2224,9 +2203,13 @@ async function renderSavedOrdersTab(){
   window._savedOrdersCache = orders;
   selectedOrderIds = new Set(Array.from(selectedOrderIds).filter(id => orders.some(o => o.id === id)));
 
+  document.getElementById('savedOrderListHint').textContent = periodFilter === 'all'
+    ? '지금까지 저장된 모든 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.'
+    : '이 기간에 저장된 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.';
+
   const emptyNote = document.getElementById('savedOrderListEmptyNote');
   emptyNote.style.display = orders.length === 0 ? 'block' : 'none';
-  emptyNote.textContent = savedOrdersViewMode === 'all' ? '저장된 주문이 아직 없어요.' : '이 기간에는 저장된 주문이 없어요.';
+  emptyNote.textContent = periodFilter === 'all' ? '저장된 주문이 아직 없어요.' : '이 기간에는 저장된 주문이 없어요.';
 
   document.getElementById('savedOrderListWrap').innerHTML = orders.map(o => `
     <div class="order-card${selectedOrderIds.has(o.id) ? ' selected' : ''}">
@@ -2699,7 +2682,8 @@ function toggleAddOrderForm(){
   const wrap = document.getElementById('addOrderFormWrap');
   const isOpening = wrap.style.display === 'none';
   wrap.style.display = isOpening ? 'block' : 'none';
-  document.getElementById('addOrderBtn').textContent = isOpening ? '취소' : '+ 직접 입력';
+  document.getElementById('addOrderBtn').textContent = isOpening ? '취소' : '✍️ 직접 입력으로 추가';
+  if(isOpening) document.getElementById('manualAddStatus').textContent = '';
 
   if(isOpening && !addOrderFields){
     const draft = loadOrderFormDraft();
@@ -2756,8 +2740,16 @@ async function submitNewSavedOrder(){
   addOrderFields = null;
   document.getElementById('addOrderFormWrap').innerHTML = '';
   document.getElementById('addOrderFormWrap').style.display = 'none';
-  document.getElementById('addOrderBtn').textContent = '+ 직접 입력';
+  document.getElementById('addOrderBtn').textContent = '✍️ 직접 입력으로 추가';
+  document.getElementById('manualAddStatus').innerHTML = '✓ 저장했어요. <button type="button" class="mini-btn" onclick="goToSavedOrdersTab()">주문 목록에서 보기</button>';
+  document.getElementById('manualAddStatus').style.color = 'var(--teal)';
   renderSavedOrdersTab();
+}
+
+function goToSavedOrdersTab(){
+  periodFilter = 'all';
+  customRangeStart = null; customRangeEnd = null;
+  setPageTab('orders');
 }
 
 function toggleSavedOrderEdit(id){
