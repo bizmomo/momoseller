@@ -525,6 +525,7 @@ requireAuth(function(user){
 
 async function init(){
   await Promise.all([loadCostMap(), loadOtherExpenses()]);
+  await reconcileCostMap();
   renderExpenseList();
   loadUploadDraft();
   setupOrdersRangePickers();
@@ -1001,6 +1002,25 @@ async function cleanupOrphanedCosts(refs){
       .eq('user_id', currentUser.id).eq('platform', ref.platform)
       .eq('product_name', ref.productName).eq('option_name', optionName);
     if(costRows && costRows.length) await sb.from('product_costs').delete().eq('id', costRows[0].id);
+    delete costMap[key];
+  }
+}
+
+// 페이지를 열 때마다 학습된 원가 중 지금 남아있는 주문이 하나도 없는 항목을
+// 정리한다. cleanupOrphanedCosts는 주문을 지우는 그 순간에만 동작하는데,
+// 예전에 정리가 안 되고 남은 유령 항목이 있으면(버그·과거 데이터 등) 그게
+// 계속 엑셀 원가관리와 다음 업로드 자동입력에 남아있게 된다.
+async function reconcileCostMap(){
+  const keys = Object.keys(costMap);
+  if(keys.length === 0) return;
+  const allOrders = await fetchAllSavedOrders();
+  const validKeys = new Set(allOrders.map(o => costKey(o.platform, o.product_name, o.option_name)));
+  const orphanKeys = keys.filter(k => !validKeys.has(k));
+  for(const key of orphanKeys){
+    const [platform, productName, optionName] = key.split('|');
+    await sb.from('product_costs').delete()
+      .eq('user_id', currentUser.id).eq('platform', platform)
+      .eq('product_name', productName).eq('option_name', optionName || '');
     delete costMap[key];
   }
 }
