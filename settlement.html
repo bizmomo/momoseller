@@ -122,7 +122,6 @@
   <div class="masthead">
     <div>
       <h1>정산 분석</h1>
-      <p>쿠팡·스마트스토어 주문/정산 엑셀을 올리면 매출, 수수료, 정산금액, 순이익, 마진율을 자동으로 정리해드려요. 엑셀 파일 자체는 이 화면(브라우저) 안에서만 처리되고 어디로도 전송되지 않고, 계산된 상품명·금액 정보만 분석 페이지에서 다시 볼 수 있도록 저장돼요.</p>
     </div>
     <div class="page-actions">
       <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
@@ -254,15 +253,12 @@
         <button class="secondary" style="margin-top:8px;" onclick="applyCustomOrdersRange()">이 기간으로 보기</button>
       </div>
       <div class="field-block" id="storeFilterWrap" style="margin-top:16px; margin-bottom:0;">
-        <label for="storeFilterSelect">상점 (제목 붙여 저장한 정산)</label>
         <div style="display:flex; align-items:center; gap:8px;">
           <select id="storeFilterSelect" onchange="applyStoreFilter()" style="flex:1; min-width:0;"></select>
           <button type="button" class="mini-btn danger" id="deleteStoreBtn" style="display:none; flex-shrink:0;" onclick="deleteCurrentStoreFilter()">삭제</button>
         </div>
-        <button type="button" class="mini-btn" style="margin-top:8px;" onclick="addNewStoreFromOrdersTab()">+ 새 상점</button>
       </div>
-      <div class="field-block" id="platformFilterWrap" style="margin-top:16px; margin-bottom:0;">
-        <label>판매처</label>
+      <div class="field-block" id="platformFilterWrap" style="margin-top:12px; margin-bottom:0;">
         <div class="period-chip-row">
           <button type="button" class="period-chip active" data-platform="all" onclick="applyPlatformFilter('all')">전체</button>
           <button type="button" class="period-chip" data-platform="coupang" onclick="applyPlatformFilter('coupang')">쿠팡</button>
@@ -1781,7 +1777,8 @@ async function refreshStoreOptions(){
   const prevFilterValue = storeFilterValue;
   filterSel.innerHTML = '<option value="all">전체 상점</option>'
     + savedReports.map(r => `<option value="${r.id}">${escapeHtml(r.title)}</option>`).join('')
-    + '<option value="__untitled__">제목 없음</option>';
+    + '<option value="__untitled__">제목 없음</option>'
+    + '<option value="__new__">+ 새 상점 추가</option>';
   const stillValid = prevFilterValue === 'all' || prevFilterValue === '__untitled__' || savedReports.some(r => r.id === prevFilterValue);
   storeFilterValue = stillValid ? prevFilterValue : 'all';
   filterSel.value = storeFilterValue;
@@ -1845,7 +1842,13 @@ async function addNewStoreFromOrdersTab(){
 }
 
 function applyStoreFilter(){
-  storeFilterValue = document.getElementById('storeFilterSelect').value;
+  const val = document.getElementById('storeFilterSelect').value;
+  if(val === '__new__'){
+    document.getElementById('storeFilterSelect').value = storeFilterValue;
+    addNewStoreFromOrdersTab();
+    return;
+  }
+  storeFilterValue = val;
   document.getElementById('deleteStoreBtn').style.display = (storeFilterValue !== 'all' && storeFilterValue !== '__untitled__') ? 'inline-block' : 'none';
   renderSavedOrdersTab();
 }
