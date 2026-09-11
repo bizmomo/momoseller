@@ -59,9 +59,6 @@
   details.adv-settings summary::before{ content:'▸ '; }
   details.adv-settings[open] summary::before{ content:'▾ '; }
   details.adv-settings .adv-body{ padding-top:14px; }
-  .tab-row{ display:flex; gap:6px; margin-bottom:14px; }
-  .tab-btn{ flex:1; text-align:center; padding:9px 4px; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:3px; cursor:pointer; }
-  .tab-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
   .order-card{ border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:8px; background:#fff; cursor:pointer; }
   .order-card.selected{ border-color:var(--teal); background:#F3F8F7; }
   .group-folder-card, .group-back-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:8px; background:#FAF8F1; cursor:pointer; }
@@ -69,6 +66,9 @@
   .group-folder-card .group-folder-count, .group-back-row .group-folder-count{ font-size:12.5px; color:var(--ink-soft); flex-shrink:0; }
   .group-back-row{ background:#fff; border-style:dashed; }
   .new-badge{ display:inline-block; background:var(--accent); color:#fff; font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; margin-right:6px; vertical-align:middle; }
+  .section-toggle{ display:flex; align-items:center; justify-content:space-between; cursor:pointer; }
+  .section-toggle h2{ margin:0; }
+  .section-toggle-caret{ color:var(--ink-soft); font-size:14px; flex-shrink:0; }
   .date-select-group{ display:flex; gap:6px; }
   .date-select-group select{ flex:1; min-width:0; width:auto; }
   .mini-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); }
@@ -173,15 +173,13 @@
     </div>
   </div>
 
-  <div class="tab-row">
-    <button class="tab-btn active" data-page-tab="upload" onclick="setPageTab('upload')">정산 등록</button>
-    <button class="tab-btn" data-page-tab="orders" onclick="setPageTab('orders')">저장된 정산</button>
-  </div>
-
-  <div id="uploadTab">
   <div class="card" id="uploadCard">
-    <h2>정산 등록</h2>
-    <div class="hint" style="margin-top:0;">엑셀 파일을 올리거나, 표를 복사해서 붙여넣거나, 직접 입력해서 정산 데이터를 등록할 수 있어요.</div>
+    <div class="section-toggle" id="uploadToggle" onclick="toggleUploadAccordion()">
+      <h2>정산 등록</h2>
+      <span class="section-toggle-caret" id="uploadToggleCaret">▸</span>
+    </div>
+    <div id="uploadAccordionBody" style="display:none;">
+    <div class="hint" style="margin-top:10px;">엑셀 파일을 올리거나, 표를 복사해서 붙여넣거나, 직접 입력해서 정산 데이터를 등록할 수 있어요.</div>
 
     <div class="field-block" id="topStoreWrap">
       <label for="topStoreSelect">정산 그룹 선택</label>
@@ -270,10 +268,10 @@
 
     <button class="primary" id="analyzeBtn" style="margin-top:16px;" onclick="analyzeAndSave()" disabled>정산 분석 / 저장</button>
     <div class="status" id="uploadStatus"></div>
-  </div>
+    </div>
   </div>
 
-  <div id="ordersTab" style="display:none;">
+  <div id="ordersTab">
     <div class="card compact-card">
       <div class="filter-trigger-row">
         <button type="button" class="filter-trigger" onclick="openFilterSheet('period')">
@@ -472,6 +470,23 @@ async function init(){
   loadUploadDraft();
   setupOrdersRangePickers();
   await refreshStoreOptions();
+  renderSavedOrdersTab();
+}
+
+// 정산등록/저장된정산은 더 이상 별도 탭이 아니라 한 페이지 - 정산등록은
+// 아코디언으로 접혀있다가 누르면 펼쳐지고, 저장된정산 목록은 항상 보인다.
+function setUploadAccordionOpen(open){
+  const body = document.getElementById('uploadAccordionBody');
+  const caret = document.getElementById('uploadToggleCaret');
+  if(!body) return;
+  body.style.display = open ? 'block' : 'none';
+  if(caret) caret.textContent = open ? '▾' : '▸';
+  // 방금 등록한 주문의 NEW 배너는 정산등록을 다시 열면(=나갔다 오면) 지워짐
+  if(open) recentlyAddedOrderKeys.clear();
+}
+function toggleUploadAccordion(){
+  const body = document.getElementById('uploadAccordionBody');
+  setUploadAccordionOpen(!body || body.style.display === 'none');
 }
 
 function setupOrdersRangePickers(){
@@ -976,12 +991,14 @@ function renderExpenseList(){
 
 // ============ upload handling ============
 document.getElementById('fileInput').addEventListener('change', function(e){
+  setUploadAccordionOpen(true);
   const files = Array.from(e.target.files || []);
   files.forEach(addFile);
   e.target.value = '';
 });
 
 function togglePasteForm(){
+  setUploadAccordionOpen(true);
   const wrap = document.getElementById('pasteFormWrap');
   wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
 }
@@ -1544,18 +1561,6 @@ function loadUploadDraft(){
   if(uploadedFiles.length) renderFileList();
 }
 
-async function setPageTab(tab){
-  document.querySelectorAll('.tab-btn[data-page-tab]').forEach(b => b.classList.toggle('active', b.dataset.pageTab === tab));
-  document.getElementById('uploadTab').style.display = tab === 'upload' ? 'block' : 'none';
-  document.getElementById('ordersTab').style.display = tab === 'orders' ? 'block' : 'none';
-  // 방금 등록한 주문의 NEW 배너는 저장된정산 탭을 벗어나면(=나갔다 오면) 지워짐
-  if(tab === 'upload') recentlyAddedOrderKeys.clear();
-  if(tab === 'orders'){
-    await refreshStoreOptions();
-    renderSavedOrdersTab();
-  }
-}
-
 // ============ 저장된 주문 목록 (settlement_orders: excel-saved + manually entered) ============
 function monthRangeISO(year, month){
   const start = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -1642,7 +1647,9 @@ function applyCustomOrdersRange(){
 async function goToSavedOrdersForAnalysis(){
   applyPeriodFilter('all');
   applyPlatformFilter('all');
-  await setPageTab('orders');
+  setUploadAccordionOpen(false);
+  await refreshStoreOptions();
+  renderSavedOrdersTab();
   if(lastSavedReportId){
     storeFilterValue = lastSavedReportId;
     const sel = document.getElementById('storeFilterSelect');
@@ -2555,6 +2562,7 @@ function loadOrderFormDraft(){
 }
 
 function toggleAddOrderForm(){
+  setUploadAccordionOpen(true);
   const wrap = document.getElementById('addOrderFormWrap');
   const isOpening = wrap.style.display === 'none';
   wrap.style.display = isOpening ? 'block' : 'none';
@@ -2638,10 +2646,12 @@ async function submitNewSavedOrder(){
   renderSavedOrdersTab();
 }
 
-function goToSavedOrdersTab(){
+async function goToSavedOrdersTab(){
   periodFilter = 'all';
   customRangeStart = null; customRangeEnd = null;
-  setPageTab('orders');
+  setUploadAccordionOpen(false);
+  await refreshStoreOptions();
+  renderSavedOrdersTab();
 }
 
 function toggleSavedOrderEdit(id){
