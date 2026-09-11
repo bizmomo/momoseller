@@ -86,6 +86,11 @@
   .cost-row.total{ font-weight:700; border-top:1px solid var(--ink); margin-top:4px; padding-top:12px; }
   .cost-row span:first-child{ flex:1; }
   .cost-row-count{ font-size:11.5px; color:var(--ink-soft); font-weight:400; }
+  .cost-row-toggle{ cursor:pointer; }
+  .cost-row-caret{ font-size:10px; color:var(--ink-soft); }
+  .cost-breakdown{ padding:0 0 8px 4px; }
+  .cost-breakdown-item{ display:flex; justify-content:space-between; gap:10px; font-size:12px; color:var(--ink-soft); padding:3px 0; }
+  .cost-breakdown-item span:first-child{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .table-scroll{ display:none; overflow-x:auto; }
   .desktop-table{ width:100%; border-collapse:collapse; font-size:12.5px; white-space:nowrap; }
   .desktop-table th, .desktop-table td{ padding:8px 10px; border-bottom:1px solid var(--line); text-align:right; }
@@ -1552,20 +1557,27 @@ async function renderSavedOrdersTab(){
 function renderSavedSummary(orders){
   const totalGross = orders.reduce((s, o) => s + (o.gross_sales || 0), 0);
   const totalSettlement = orders.reduce((s, o) => s + (o.settlement_amount || 0), 0);
-  const totalMarketFee = orders.reduce((s, o) => s + (o.marketplace_fee || 0), 0);
-  const totalShipFee = orders.reduce((s, o) => s + (o.shipping_fee || 0), 0);
-  const totalOtherFee = orders.reduce((s, o) => s + (o.other_platform_fee || 0), 0);
-  const totalFees = totalMarketFee + totalShipFee + totalOtherFee;
-  const totalProductCost = orders.reduce((s, o) => s + (o.product_cost || 0), 0);
-  const totalPackagingCost = orders.reduce((s, o) => s + (o.packaging_cost || 0), 0);
-  const totalCourierCost = orders.reduce((s, o) => s + (o.courier_cost || 0), 0);
 
-  const marketFeeCount = orders.filter(o => o.marketplace_fee).length;
-  const shipFeeCount = orders.filter(o => o.shipping_fee).length;
-  const otherFeeCount = orders.filter(o => o.other_platform_fee).length;
-  const productCostCount = orders.filter(o => o.product_cost).length;
-  const packagingCostCount = orders.filter(o => o.packaging_cost).length;
-  const courierCostCount = orders.filter(o => o.courier_cost).length;
+  // per-row breakdown (which orders, how much each) so an anomalous total - one order
+  // with a wildly wrong registered cost, say - can actually be found and not just seen
+  // as an odd aggregate number.
+  const fieldItems = (getter) => orders.filter(o => getter(o)).map(o => ({ date: o.order_date, name: o.product_name, amt: getter(o) }));
+  const sum = (items) => items.reduce((s, i) => s + i.amt, 0);
+
+  const marketFeeItems = fieldItems(o => o.marketplace_fee);
+  const shipFeeItems = fieldItems(o => o.shipping_fee);
+  const otherFeeItems = fieldItems(o => o.other_platform_fee);
+  const productCostItems = fieldItems(o => o.product_cost);
+  const packagingCostItems = fieldItems(o => o.packaging_cost);
+  const courierCostItems = fieldItems(o => o.courier_cost);
+
+  const totalMarketFee = sum(marketFeeItems);
+  const totalShipFee = sum(shipFeeItems);
+  const totalOtherFee = sum(otherFeeItems);
+  const totalFees = totalMarketFee + totalShipFee + totalOtherFee;
+  const totalProductCost = sum(productCostItems);
+  const totalPackagingCost = sum(packagingCostItems);
+  const totalCourierCost = sum(courierCostItems);
 
   // same period window the order list itself is filtered by (오늘/어제/.../전체/기간지정) -
   // NOT derived from the visible orders' own dates. An expense (e.g. today's ad spend) must
@@ -1578,13 +1590,15 @@ function renderSavedSummary(orders){
     range = computePeriodRange(periodFilter);
   }
 
-  let totalAdExpense = 0, totalOtherExpense = 0, adExpenseCount = 0, otherExpenseCount = 0;
+  const adItems = [], otherItems = [];
   otherExpenses.forEach(e => {
     if(range && (e.expense_date < range.start || e.expense_date > range.end)) return;
-    const amt = Math.abs(e.amount);
-    if(e.category === '광고비'){ totalAdExpense += amt; adExpenseCount++; }
-    else { totalOtherExpense += amt; otherExpenseCount++; }
+    const label = (e.memo || e.category) + (e.platform ? ` (${PLATFORM_LABELS[e.platform]})` : '');
+    const item = { date: e.expense_date, name: label, amt: Math.abs(e.amount) };
+    if(e.category === '광고비') adItems.push(item); else otherItems.push(item);
   });
+  const totalAdExpense = sum(adItems);
+  const totalOtherExpense = sum(otherItems);
 
   const totalCostsAndExpense = totalProductCost + totalPackagingCost + totalCourierCost + totalAdExpense + totalOtherExpense;
   const netProfit = totalSettlement - totalCostsAndExpense;
@@ -1597,20 +1611,38 @@ function renderSavedSummary(orders){
   document.getElementById('savedSumMargin').textContent = marginRate.toFixed(1) + '%';
   document.getElementById('savedSumCostsAndExpense').textContent = formatWon(-totalCostsAndExpense);
 
-  const row = (label, count, suffix, amount) => `
-    <div class="cost-row"><span>${label} <span class="cost-row-count">(${count}${suffix})</span></span><span class="amt-neg">${formatWon(-amount)}</span></div>`;
+  function breakdownRow(id, label, items, total, suffix){
+    const itemsHtml = items.length
+      ? items.map(i => `<div class="cost-breakdown-item"><span>${escapeHtml(i.date || '-')} · ${escapeHtml(i.name || '(이름 없음)')}</span><span>${formatWon(-i.amt)}</span></div>`).join('')
+      : '<div class="cost-breakdown-item hint" style="margin:0;">해당하는 항목이 없어요.</div>';
+    return `
+      <div class="cost-row cost-row-toggle" onclick="toggleCostBreakdown('${id}')">
+        <span>${label} <span class="cost-row-count">(${items.length}${suffix})</span> <span class="cost-row-caret" id="costCaret-${id}">▸</span></span>
+        <span class="amt-neg">${formatWon(-total)}</span>
+      </div>
+      <div class="cost-breakdown" id="costBreakdown-${id}" style="display:none;">${itemsHtml}</div>`;
+  }
 
   document.getElementById('savedCostDetail').innerHTML = `
-    ${row('판매 수수료', marketFeeCount, '건', totalMarketFee)}
-    ${row('배송 수수료', shipFeeCount, '건', totalShipFee)}
-    ${row('기타 플랫폼 수수료', otherFeeCount, '건', totalOtherFee)}
-    ${row('상품 원가', productCostCount, '건', totalProductCost)}
-    ${row('포장비', packagingCostCount, '건', totalPackagingCost)}
-    ${row('택배비', courierCostCount, '건', totalCourierCost)}
-    ${row('광고비', adExpenseCount, '건 등록', totalAdExpense)}
-    ${row('기타 비용', otherExpenseCount, '건 등록', totalOtherExpense)}
+    ${breakdownRow('marketFee', '판매 수수료', marketFeeItems, totalMarketFee, '건')}
+    ${breakdownRow('shipFee', '배송 수수료', shipFeeItems, totalShipFee, '건')}
+    ${breakdownRow('otherFee', '기타 플랫폼 수수료', otherFeeItems, totalOtherFee, '건')}
+    ${breakdownRow('productCost', '상품 원가', productCostItems, totalProductCost, '건')}
+    ${breakdownRow('packagingCost', '포장비', packagingCostItems, totalPackagingCost, '건')}
+    ${breakdownRow('courierCost', '택배비', courierCostItems, totalCourierCost, '건')}
+    ${breakdownRow('adExpense', '광고비', adItems, totalAdExpense, '건 등록')}
+    ${breakdownRow('otherExpense', '기타 비용', otherItems, totalOtherExpense, '건 등록')}
     <div class="cost-row total"><span>총 비용</span><span class="amt-neg">${formatWon(-(totalFees + totalCostsAndExpense))}</span></div>
   `;
+}
+
+function toggleCostBreakdown(id){
+  const el = document.getElementById('costBreakdown-' + id);
+  const caret = document.getElementById('costCaret-' + id);
+  if(!el) return;
+  const opening = el.style.display === 'none';
+  el.style.display = opening ? 'block' : 'none';
+  if(caret) caret.textContent = opening ? '▾' : '▸';
 }
 
 // ============ excel export (whatever's currently filtered/visible in 저장된 정산) ============
