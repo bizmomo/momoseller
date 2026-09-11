@@ -118,9 +118,20 @@
   .period-chip-row{ display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
   .period-chip{ flex-shrink:0; white-space:nowrap; padding:6px 10px; font-size:12.5px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:14px; cursor:pointer; }
   .period-chip.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
-  /* iOS Safari renders input[type=date]'s native control wider than the box regardless of
-     CSS width/min-width - shrinking font-size/padding is the only lever that actually helps */
-  #rangeStartDate, #rangeEndDate, #expDate{ font-size:12.5px; padding:6px 8px; }
+  /* iOS Safari renders input[type=date]'s native control wider than its box regardless of
+     CSS width/min-width. Instead of fighting that rendering, the real input is made an
+     invisible full-size overlay (still genuinely tappable/focusable, real native picker)
+     on top of a plain div we fully control the look of. */
+  .date-input-wrap{ position:relative; }
+  .date-display{
+    padding:8px 10px; font-size:13px; color:var(--ink);
+    border:1px solid var(--line); border-radius:3px; background:#fff;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .date-input-wrap input[type=date]{
+    position:absolute; inset:0; width:100%; height:100%;
+    opacity:0; margin:0; padding:0; border:0; box-sizing:border-box;
+  }
 </style>
 </head>
 <body>
@@ -252,13 +263,22 @@
       </div>
       <div class="hint" id="savedOrdersPeriodLabel" style="margin-top:8px; margin-bottom:0; display:none;"></div>
       <div id="customRangeWrap" style="display:none; margin-top:12px;">
-        <div class="field-block">
-          <label for="rangeStartDate">시작일</label>
-          <input type="date" id="rangeStartDate">
-        </div>
-        <div class="field-block" style="margin-bottom:0;">
-          <label for="rangeEndDate">종료일</label>
-          <input type="date" id="rangeEndDate">
+        <div style="display:flex; align-items:flex-end; gap:8px;">
+          <div class="field-block" style="flex:1; min-width:0; margin-bottom:0;">
+            <label for="rangeStartDate">시작일</label>
+            <div class="date-input-wrap">
+              <div class="date-display" id="rangeStartDateDisplay">날짜 선택</div>
+              <input type="date" id="rangeStartDate" oninput="syncDateDisplay('rangeStartDate')">
+            </div>
+          </div>
+          <span style="padding-bottom:9px; color:var(--ink-soft);">~</span>
+          <div class="field-block" style="flex:1; min-width:0; margin-bottom:0;">
+            <label for="rangeEndDate">종료일</label>
+            <div class="date-input-wrap">
+              <div class="date-display" id="rangeEndDateDisplay">날짜 선택</div>
+              <input type="date" id="rangeEndDate" oninput="syncDateDisplay('rangeEndDate')">
+            </div>
+          </div>
         </div>
         <button class="secondary" style="margin-top:8px;" onclick="applyCustomOrdersRange()">이 기간으로 보기</button>
       </div>
@@ -314,7 +334,10 @@
       <div id="expenseForm" style="display:none; margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
         <div class="field-block">
           <label for="expDate">날짜</label>
-          <input type="date" id="expDate">
+          <div class="date-input-wrap">
+            <div class="date-display" id="expDateDisplay">날짜 선택</div>
+            <input type="date" id="expDate" oninput="syncDateDisplay('expDate')">
+          </div>
         </div>
         <div class="field-block">
           <label for="expAmount">금액</label>
@@ -411,6 +434,16 @@ function setupOrdersRangePickers(){
   const { start } = monthRangeISO(today.getFullYear(), today.getMonth() + 1);
   document.getElementById('rangeStartDate').value = start;
   document.getElementById('rangeEndDate').value = formatDateISO(today);
+  syncDateDisplay('rangeStartDate');
+  syncDateDisplay('rangeEndDate');
+}
+
+// the real input[type=date] is an invisible overlay (see .date-input-wrap) so its value
+// has to be mirrored into the visible .date-display div by hand, both on user input and
+// whenever we set .value programmatically
+function syncDateDisplay(inputId){
+  const display = document.getElementById(inputId + 'Display');
+  if(display) display.textContent = document.getElementById(inputId).value || '날짜 선택';
 }
 
 // ============ state ============
@@ -797,7 +830,10 @@ function toggleExpenseForm(){
   const form = document.getElementById('expenseForm');
   const willShow = form.style.display === 'none';
   form.style.display = willShow ? 'block' : 'none';
-  if(willShow) document.getElementById('expDate').value = new Date().toISOString().slice(0, 10);
+  if(willShow){
+    document.getElementById('expDate').value = new Date().toISOString().slice(0, 10);
+    syncDateDisplay('expDate');
+  }
 }
 
 async function saveExpense(){
