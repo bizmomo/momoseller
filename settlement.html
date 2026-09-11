@@ -71,6 +71,7 @@
   .bulk-field-row{ display:flex; align-items:center; gap:8px; margin-top:6px; }
   .bulk-field-row label{ flex:1; font-size:13px; margin-bottom:0; }
   .bulk-field-row input[type=number]{ width:84px; padding:5px 8px; font-size:13px; }
+  .bulk-field-row select{ flex:0 0 140px; min-width:0; padding:5px 8px; font-size:13px; }
   .order-card-top{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink-soft); margin-bottom:4px; }
   .order-card-name{ font-size:13.5px; margin-bottom:8px; line-height:1.4; }
   .order-card-nums{ display:flex; gap:16px; font-size:12.5px; color:var(--ink-soft); flex-wrap:wrap; row-gap:8px; }
@@ -2075,8 +2076,16 @@ function renderBulkEditPanel(){
     return;
   }
 
+  const groupOptions = '<option value="__untitled__">그룹 없음</option>'
+    + savedReports.map(r => `<option value="${r.id}">${escapeHtml(r.title)}</option>`).join('');
+
   panel.innerHTML = `
     <div class="hint" style="margin-top:0;">체크한 항목만 선택한 ${count}건 전체에 같은 값으로 한번에 반영돼요.</div>
+    <div class="bulk-field-row">
+      <input type="checkbox" id="bulkApply-report_id">
+      <label for="bulkApply-report_id">정산 그룹</label>
+      <select id="bulkValue-report_id">${groupOptions}</select>
+    </div>
     ${BULK_EDIT_FIELDS.map(f => `
       <div class="bulk-field-row">
         <input type="checkbox" id="bulkApply-${f.key}">
@@ -2095,8 +2104,9 @@ function renderBulkEditPanel(){
 
 async function submitBulkEdit(){
   const statusEl = document.getElementById('bulkEditStatus');
+  const groupChecked = document.getElementById('bulkApply-report_id').checked;
   const changes = BULK_EDIT_FIELDS.filter(f => document.getElementById(`bulkApply-${f.key}`).checked);
-  if(changes.length === 0){
+  if(changes.length === 0 && !groupChecked){
     statusEl.textContent = '변경할 항목을 체크해주세요.';
     statusEl.style.color = 'var(--error)';
     return;
@@ -2113,6 +2123,9 @@ async function submitBulkEdit(){
     }
     values[f.key] = n;
   }
+  const newReportId = groupChecked
+    ? (document.getElementById('bulkValue-report_id').value === '__untitled__' ? null : document.getElementById('bulkValue-report_id').value)
+    : undefined;
 
   const ids = Array.from(selectedOrderIds);
   const cache = window._savedOrdersCache || [];
@@ -2126,7 +2139,7 @@ async function submitBulkEdit(){
     const grossSales = merged.product_amount + merged.shipping_amount;
     const settlementAmount = grossSales - merged.marketplace_fee - (merged.shipping_fee || 0) - (merged.other_platform_fee || 0);
     const netProfit = settlementAmount - merged.product_cost - (merged.packaging_cost || 0) - merged.courier_cost - (merged.allocated_ad_cost || 0) - (merged.allocated_other_cost || 0);
-    return {
+    const result = {
       id,
       product_amount: merged.product_amount,
       shipping_amount: merged.shipping_amount,
@@ -2140,6 +2153,8 @@ async function submitBulkEdit(){
       margin_rate: grossSales > 0 ? (netProfit / grossSales) * 100 : 0,
       updated_at: new Date().toISOString(),
     };
+    if(groupChecked) result.report_id = newReportId;
+    return result;
   }).filter(Boolean);
 
   const results = await Promise.all(updates.map(u => {
