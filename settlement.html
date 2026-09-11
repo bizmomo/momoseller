@@ -1546,7 +1546,7 @@ async function renderSavedOrdersTab(){
     <div class="order-card${selectedOrderIds.has(o.id) ? ' selected' : ''}">
       <div id="savedOrderSummary-${o.id}" onclick="${selectMode ? `toggleOrderSelect('${o.id}')` : `toggleSavedOrderEdit('${o.id}')`}" style="display:flex; align-items:flex-start; gap:10px;">
         ${selectMode ? `<input type="checkbox" class="order-select-checkbox" data-id="${o.id}" style="pointer-events:none; margin-top:3px;" ${selectedOrderIds.has(o.id) ? 'checked' : ''}>` : ''}
-        <div style="flex:1; min-width:0;">${savedOrderSummaryHtml(o)}</div>
+        <div id="savedOrderSummaryInner-${o.id}" style="flex:1; min-width:0;">${savedOrderSummaryHtml(o)}</div>
       </div>
       <div id="savedOrderEdit-${o.id}" style="display:none;"></div>
     </div>
@@ -2471,7 +2471,7 @@ async function saveSavedOrderEdit(id){
   const idx = (window._savedOrdersCache || []).findIndex(o => o.id === id);
   if(idx !== -1){
     window._savedOrdersCache[idx] = Object.assign({}, window._savedOrdersCache[idx], row);
-    const summaryEl = document.getElementById('savedOrderSummary-' + id);
+    const summaryEl = document.getElementById('savedOrderSummaryInner-' + id);
     if(summaryEl) summaryEl.innerHTML = savedOrderSummaryHtml(window._savedOrdersCache[idx]);
     renderSavedSummary(window._savedOrdersCache);
   }
