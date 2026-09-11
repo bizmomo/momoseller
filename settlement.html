@@ -252,10 +252,8 @@
       <div class="period-chip-row" id="periodChipRow">
         <button type="button" class="period-chip active" data-period="all" onclick="applyPeriodFilter('all')">전체</button>
         <button type="button" class="period-chip" data-period="today" onclick="applyPeriodFilter('today')">오늘</button>
-        <button type="button" class="period-chip" data-period="yesterday" onclick="applyPeriodFilter('yesterday')">어제</button>
         <button type="button" class="period-chip" data-period="week" onclick="applyPeriodFilter('week')">1주</button>
         <button type="button" class="period-chip" data-period="month1" onclick="applyPeriodFilter('month1')">1달</button>
-        <button type="button" class="period-chip" data-period="month6" onclick="applyPeriodFilter('month6')">6달</button>
         <button type="button" class="period-chip" data-period="year1" onclick="applyPeriodFilter('year1')">1년</button>
         <button type="button" class="period-chip" data-period="custom" onclick="applyPeriodFilter('custom')">기간지정</button>
       </div>
@@ -396,6 +394,7 @@
       </details>
 
       <button class="secondary" style="margin-top:16px;" onclick="downloadSavedOrders()">엑셀 다운로드</button>
+      <div class="hint" style="text-align:center; margin-top:6px;">주문목록·정산요약·원가·추가비용이 각각 다른 시트에 담겨요</div>
     </div>
   </div>
 
@@ -449,7 +448,7 @@ let analyzedOrders = [];  // flattened normalized rows across all valid files, f
 let fileSeq = 0;
 let costMap = {};         // costKey -> { unitCost, packagingCost }
 let otherExpenses = [];   // rows from other_expenses for the current user
-let periodFilter = 'all'; // 'all' | 'today' | 'yesterday' | 'week' | 'month1' | 'month6' | 'year1' | 'custom'
+let periodFilter = 'all'; // 'all' | 'today' | 'week' | 'month1' | 'year1' | 'custom'
 let customRangeStart = null; // set when 'custom' period is applied
 let customRangeEnd = null;
 let storeFilterValue = 'all'; // 'all' | '__untitled__' | a settlement_reports.id
@@ -1490,10 +1489,8 @@ function computePeriodRange(key){
   const end = formatDateISO(today);
   const d = new Date(today);
   if(key === 'today') return { start: end, end };
-  if(key === 'yesterday'){ d.setDate(d.getDate() - 1); const s = formatDateISO(d); return { start: s, end: s }; }
   if(key === 'week'){ d.setDate(d.getDate() - 6); return { start: formatDateISO(d), end }; }
   if(key === 'month1'){ d.setMonth(d.getMonth() - 1); return { start: formatDateISO(d), end }; }
-  if(key === 'month6'){ d.setMonth(d.getMonth() - 6); return { start: formatDateISO(d), end }; }
   if(key === 'year1'){ d.setFullYear(d.getFullYear() - 1); return { start: formatDateISO(d), end }; }
   return null;
 }
@@ -1783,8 +1780,8 @@ function downloadSavedOrders(){
   expenseWs['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 30 }];
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, summaryWs, '정산요약');
   XLSX.utils.book_append_sheet(wb, orderWs, '주문상세');
+  XLSX.utils.book_append_sheet(wb, summaryWs, '정산요약');
   XLSX.utils.book_append_sheet(wb, costWs, '원가관리');
   XLSX.utils.book_append_sheet(wb, expenseWs, '기타지출');
 
