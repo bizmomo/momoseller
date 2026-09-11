@@ -944,9 +944,12 @@ async function loadCostMap(){
 // exists, so a manually-corrected cost can't quietly get lost.
 async function syncCostMapFromOrder(row){
   const qty = row.quantity || 1;
-  const unitCost = (row.product_cost || 0) / qty;
-  const packagingCost = (row.packaging_cost || 0) / qty;
-  const courierCost = (row.courier_cost || 0) / qty;
+  // 수량으로 나눈 값이 딱 안 떨어지면 소수점이 계속 남는데, 이 단가가 나중에
+  // 다른 주문 수량과 곱해져 그대로 settlement_orders(정수 컬럼)까지 흘러가면
+  // 저장이 깨진다 - 원화는 소수 단위가 없으니 여기서 미리 반올림해서 끊는다.
+  const unitCost = Math.round((row.product_cost || 0) / qty);
+  const packagingCost = Math.round((row.packaging_cost || 0) / qty);
+  const courierCost = Math.round((row.courier_cost || 0) / qty);
   const key = costKey(row.platform, row.product_name, row.option_name);
   const optionName = row.option_name || '';
   const payload = {
@@ -1544,12 +1547,15 @@ async function saveOrdersToDb(orders, storeSelection){
     shipping_fee: o.shippingFee,
     other_platform_fee: o.otherPlatformFee,
     settlement_amount: o.settlementAmount,
-    product_cost: o.productCost,
-    packaging_cost: o.packagingCost,
-    courier_cost: o.courierCost,
-    allocated_ad_cost: o.allocatedAdCost,
-    allocated_other_cost: o.allocatedOtherCost,
-    net_profit: o.netProfit,
+    // 원가는 학습된 단가(원가÷수량)를 수량만큼 곱하거나, 추가비용을 매출/수량
+    // 비율로 나눠 배분하는 과정에서 나누어떨어지지 않으면 소수점이 계속 남는다.
+    // 원화는 소수 단위가 없고 DB 컬럼도 정수라, 저장 직전에 반올림해서 끊는다.
+    product_cost: Math.round(o.productCost || 0),
+    packaging_cost: Math.round(o.packagingCost || 0),
+    courier_cost: Math.round(o.courierCost || 0),
+    allocated_ad_cost: Math.round(o.allocatedAdCost || 0),
+    allocated_other_cost: Math.round(o.allocatedOtherCost || 0),
+    net_profit: Math.round(o.netProfit || 0),
     margin_rate: o.marginRate,
     buyer_name: o.buyerName || null,
     buyer_phone: o.buyerPhone || null,
@@ -2399,7 +2405,7 @@ async function submitBulkEdit(){
 
   const values = {};
   if(hasFieldValue){
-    const n = Number(fieldValueRaw);
+    const n = Math.round(Number(fieldValueRaw));
     if(isNaN(n) || n < 0){
       const f = BULK_EDIT_FIELDS.find(f => f.key === bulkSelectedField);
       statusEl.textContent = `${f.label}에 넣을 값을 입력해주세요.`;
@@ -2708,13 +2714,15 @@ function validateOrderFields(fields){
 }
 
 function readOrderFields(fields){
-  const productAmount = Number(fields.productAmountInput.value) || 0;
-  const shippingAmount = Number(fields.shippingAmountInput.value) || 0;
+  // 원화는 소수 단위가 없고 DB 컬럼도 정수라, 입력값을 여기서 바로 반올림해서
+  // settlement_orders에 소수점 있는 값이 들어가 저장이 깨지는 걸 막는다.
+  const productAmount = Math.round(Number(fields.productAmountInput.value) || 0);
+  const shippingAmount = Math.round(Number(fields.shippingAmountInput.value) || 0);
   const grossSales = productAmount + shippingAmount;
-  const fee = Number(fields.feeInput.value) || 0;
-  const cost = Number(fields.costInput.value) || 0;
-  const packagingCost = Number(fields.packagingCostInput.value) || 0;
-  const courierCost = Number(fields.courierCostInput.value) || 0;
+  const fee = Math.round(Number(fields.feeInput.value) || 0);
+  const cost = Math.round(Number(fields.costInput.value) || 0);
+  const packagingCost = Math.round(Number(fields.packagingCostInput.value) || 0);
+  const courierCost = Math.round(Number(fields.courierCostInput.value) || 0);
   const settlementAmount = grossSales - fee;
   const netProfit = settlementAmount - cost - packagingCost - courierCost;
   return {
