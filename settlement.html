@@ -577,8 +577,12 @@ let storeFilterValue = 'all'; // 'all' | '__untitled__' | a settlement_reports.i
 let platformFilterValue = 'all'; // 'all' | 'coupang' | 'smartstore'
 let orderListPage = 1;
 let orderListPageSize = 50; // 50 | 100 | 200
-let expandedGroupIds = new Set(); // 전체보기 폴더뷰에서 인라인으로 펼쳐진 그룹 id들 (storeFilterValue와 무관)
 const UNGROUPED_FOLDER_KEY = '__ungrouped__'; // "그룹없음"도 다른 그룹과 똑같이 폴더 카드로 접고 펼 수 있게 쓰는 키
+// 그룹없음은 이름 붙여 만든 그룹이 아니라 "정리 안 한 주문 전부"라 대개 제일
+// 큰(혹은 유일한) 묶음이다 - 다른 이름 있는 그룹처럼 접힌 채 시작하면 방금 막
+// "그룹 없이" 저장한 주문이 화면에서 통째로 사라진 것처럼 보이니, 그룹없음만
+// 기본으로 펼쳐두고 나머지 그룹은 예전처럼 접힌 채로 둔다. (눌러서 접는 건 자유)
+let expandedGroupIds = new Set([UNGROUPED_FOLDER_KEY]); // 전체보기 폴더뷰에서 인라인으로 펼쳐진 그룹 id들 (storeFilterValue와 무관)
 let lastSavedReportId = null; // report just created by the most recent saveOrdersToDb call, if titled
 let savedReports = [];
 let reportTitleById = {};
@@ -1930,10 +1934,13 @@ async function renderSavedOrdersTab(){
     selectAllBtn.textContent = allSelected ? '전체 해제' : '전체 선택';
   }
 
-  // 추가비용·정산요약은 실제 주문 목록(폴더 안이든, 그룹 없는 평평한 목록이든)과
-  // 한 세트라서, 폴더가 접힌 전체보기에서는 무엇을 요약하는 건지 애매하니 숨긴다.
-  document.getElementById('expenseCard').style.display = isFolderView ? 'none' : '';
-  document.getElementById('savedSummaryCard').style.display = isFolderView ? 'none' : '';
+  // 추가비용·정산요약은 폴더 뷰에서도 항상 보인다 - renderSavedSummary가 받는
+  // orders는 폴더 펼침 상태와 무관하게 늘 지금 필터(기간·스토어·검색)에 걸리는
+  // 전체(모든 그룹 + 그룹없음)라서, "전체" 요약이라는 의미가 폴더가 접혀있어도
+  // 전혀 애매하지 않다. 예전엔 여기서 숨겼었는데, 그룹없음까지 접힌 폴더가 되면서
+  // 방금 저장한 매출 요약이 아예 안 보이는 것처럼 느껴지는 문제가 있어 없앴다.
+  document.getElementById('expenseCard').style.display = '';
+  document.getElementById('savedSummaryCard').style.display = '';
 
   renderBulkEditPanel();
   renderSavedSummary(orders);
