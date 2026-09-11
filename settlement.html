@@ -426,6 +426,7 @@ const BULK_EDIT_FIELDS = [
   { key: 'shipping_amount', label: '배송비 받은 금액' },
   { key: 'marketplace_fee', label: '수수료' },
   { key: 'product_cost', label: '원가' },
+  { key: 'packaging_cost', label: '포장비' },
   { key: 'courier_cost', label: '택배비' },
 ];
 
@@ -1836,7 +1837,6 @@ function savedOrderSummaryHtml(o){
   const logoClass = o.platform === 'coupang' ? 'coupang' : o.platform === 'smartstore' ? 'smartstore' : 'unknown';
   const logoChar = o.platform === 'coupang' ? 'C' : o.platform === 'smartstore' ? 'N' : '?';
   const totalFee = (o.marketplace_fee || 0) + (o.shipping_fee || 0) + (o.other_platform_fee || 0);
-  const totalCost = (o.product_cost || 0) + (o.packaging_cost || 0);
   return `
     <div class="order-card-top"><span>${escapeHtml(o.order_date)}</span><span class="${platformClass}"><span class="platform-logo ${logoClass}">${logoChar}</span>${escapeHtml(PLATFORM_LABELS[o.platform] || o.platform)}</span></div>
     <div class="order-card-name">${escapeHtml(o.product_name)}${o.option_name ? ' (' + escapeHtml(o.option_name) + ')' : ''}${o.quantity > 1 ? ` × ${o.quantity}` : ''}</div>
@@ -1844,7 +1844,8 @@ function savedOrderSummaryHtml(o){
     <div class="order-card-nums">
       <span>매출<b>${formatWon(o.gross_sales)}</b></span>
       <span>수수료<b>${formatWon(-totalFee)}</b></span>
-      <span>원가<b>${formatWon(-totalCost)}</b></span>
+      <span>원가<b>${formatWon(-(o.product_cost || 0))}</b></span>
+      ${o.packaging_cost ? `<span>포장비<b>${formatWon(-o.packaging_cost)}</b></span>` : ''}
       <span>택배비<b>${formatWon(-(o.courier_cost || 0))}</b></span>
       <span>순이익<b>${formatWon(o.net_profit)}</b></span>
       <span>마진율<b>${o.margin_rate.toFixed(1)}%</b></span>
@@ -1971,6 +1972,7 @@ async function submitBulkEdit(){
       shipping_amount: merged.shipping_amount,
       marketplace_fee: merged.marketplace_fee,
       product_cost: merged.product_cost,
+      packaging_cost: merged.packaging_cost,
       courier_cost: merged.courier_cost,
       gross_sales: grossSales,
       settlement_amount: settlementAmount,
@@ -1992,7 +1994,7 @@ async function submitBulkEdit(){
     return;
   }
 
-  if(changes.some(f => f.key === 'product_cost' || f.key === 'courier_cost')){
+  if(changes.some(f => f.key === 'product_cost' || f.key === 'packaging_cost' || f.key === 'courier_cost')){
     updates.forEach(u => {
       const existing = cache.find(o => o.id === u.id);
       if(existing) syncCostMapFromOrder(Object.assign({}, existing, u));
@@ -2165,6 +2167,12 @@ function buildOrderFormFields(order){
   costInput.placeholder = '0';
   costInput.value = o.product_cost != null ? o.product_cost : 0;
 
+  const packagingCostInput = document.createElement('input');
+  packagingCostInput.type = 'number';
+  packagingCostInput.min = '0';
+  packagingCostInput.placeholder = '0';
+  packagingCostInput.value = o.packaging_cost != null ? o.packaging_cost : 0;
+
   const courierCostInput = document.createElement('input');
   courierCostInput.type = 'number';
   courierCostInput.min = '0';
@@ -2210,9 +2218,13 @@ function buildOrderFormFields(order){
   row4.appendChild(buildLabeledInput('택배비 (원)', courierCostInput));
   wrap.appendChild(row4);
 
+  const packagingBlock = buildLabeledInput('포장비 (원)', packagingCostInput);
+  packagingBlock.className = 'field-block';
+  wrap.appendChild(packagingBlock);
+
   return {
     wrap,
-    fields: { platformSel, dateInput, productNameInput, optionNameInput, quantityInput, productAmountInput, shippingAmountInput, feeInput, costInput, courierCostInput },
+    fields: { platformSel, dateInput, productNameInput, optionNameInput, quantityInput, productAmountInput, shippingAmountInput, feeInput, costInput, packagingCostInput, courierCostInput },
   };
 }
 
@@ -2231,9 +2243,10 @@ function readOrderFields(fields){
   const grossSales = productAmount + shippingAmount;
   const fee = Number(fields.feeInput.value) || 0;
   const cost = Number(fields.costInput.value) || 0;
+  const packagingCost = Number(fields.packagingCostInput.value) || 0;
   const courierCost = Number(fields.courierCostInput.value) || 0;
   const settlementAmount = grossSales - fee;
-  const netProfit = settlementAmount - cost - courierCost;
+  const netProfit = settlementAmount - cost - packagingCost - courierCost;
   return {
     platform: fields.platformSel.value,
     order_date: fields.dateInput.value,
@@ -2248,7 +2261,7 @@ function readOrderFields(fields){
     other_platform_fee: 0,
     settlement_amount: settlementAmount,
     product_cost: cost,
-    packaging_cost: 0,
+    packaging_cost: packagingCost,
     courier_cost: courierCost,
     allocated_ad_cost: 0,
     allocated_other_cost: 0,
@@ -2269,6 +2282,7 @@ function saveOrderFormDraft(){
     shipping_amount: addOrderFields.shippingAmountInput.value,
     marketplace_fee: addOrderFields.feeInput.value,
     product_cost: addOrderFields.costInput.value,
+    packaging_cost: addOrderFields.packagingCostInput.value,
     courier_cost: addOrderFields.courierCostInput.value,
   };
   sessionStorage.setItem(ORDER_DRAFT_KEY, JSON.stringify(draft));
