@@ -87,6 +87,10 @@
   .bulk-edit-actions button.bulk-action-btn{ flex:1; width:auto; padding:8px 10px; font-size:12.5px; margin-top:0; }
   .order-card-top{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink-soft); margin-bottom:4px; }
   .order-card-name{ font-size:13.5px; margin-bottom:8px; line-height:1.4; }
+  .order-card-buyer{ font-size:12px; color:var(--teal); margin:-4px 0 8px; }
+  .order-card-buyer:hover{ text-decoration:underline; }
+  .delivered-badge{ color:var(--ink-soft); font-weight:500; }
+  .buyer-info-readonly{ font-size:13.5px; padding:8px 0; }
   .order-card-nums{ display:flex; gap:16px; font-size:12.5px; color:var(--ink-soft); flex-wrap:wrap; row-gap:8px; }
   .order-card-nums b{ color:var(--ink); font-size:13.5px; display:block; margin-top:2px; }
   .platform-coupang{ color:var(--error); font-weight:500; }
@@ -355,6 +359,42 @@
       </div>
     </div>
 
+    <div id="buyerInfoSheetOverlay" class="sheet-overlay" style="display:none;" onclick="closeBuyerInfoSheet()">
+      <div class="sheet-panel" onclick="event.stopPropagation()">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+          <h3>주문자 정보</h3>
+          <button type="button" class="icon-btn" onclick="closeBuyerInfoSheet()" aria-label="닫기">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="sheet-body compact-fields">
+          <div class="field-block">
+            <label>주문자</label>
+            <div class="buyer-info-readonly" id="buyerInfoName"></div>
+          </div>
+          <div class="field-block">
+            <label>연락처</label>
+            <div class="buyer-info-readonly" id="buyerInfoPhone"></div>
+          </div>
+          <div class="field-block">
+            <label>배송지</label>
+            <div class="buyer-info-readonly" id="buyerInfoAddress"></div>
+          </div>
+          <div class="field-block">
+            <label for="buyerInfoMemo">배송 메모</label>
+            <textarea id="buyerInfoMemo" rows="3" placeholder="배송 메모를 입력하세요"></textarea>
+          </div>
+          <div class="field-block" style="display:flex; align-items:center; gap:8px; margin-bottom:0;">
+            <input type="checkbox" id="buyerInfoDelivered" style="width:auto;">
+            <label for="buyerInfoDelivered" style="margin:0;">배송완료</label>
+          </div>
+          <div class="status" id="buyerInfoStatus"></div>
+          <button type="button" class="primary" style="margin-top:10px;" onclick="saveBuyerInfo()">저장</button>
+        </div>
+      </div>
+    </div>
+
     <div class="card compact-card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; flex-wrap:wrap; gap:6px;">
         <h2 style="margin:0;">주문 목록</h2>
@@ -451,7 +491,7 @@
     </div>
   </div>
 
-  <div class="foot-note">구매자 이름·연락처·주소 같은 개인정보는 읽지 않고, 정산 계산에 필요한 상품명·금액·수수료·주문일 정보만 사용해요.</div>
+  <div class="foot-note">구매자 이름·연락처·주소·배송메모는 배송 확인 용도로만 보여드리고, 정산 계산에는 상품명·금액·수수료·주문일 정보만 사용해요.</div>
 
 </div>
 
@@ -675,6 +715,17 @@ function hasCol(map, candidateNames){
   return candidateNames.some(name => normalizeHeader(name) in map);
 }
 
+function getColOrNull(row, map, candidateNames){
+  const v = getCol(row, map, candidateNames);
+  return (v === null || String(v).trim() === '') ? null : String(v).trim();
+}
+
+// 쿠팡/스마트스토어 둘 다 발주서 엑셀에 쓰는 컬럼명이 거의 같아서 공용으로 둠
+const BUYER_NAME_NAMES = ['수취인이름', '수취인명', '받는분', '받는사람'];
+const BUYER_PHONE_NAMES = ['수취인연락처1', '수취인전화번호', '수취인휴대폰번호'];
+const BUYER_ADDRESS_NAMES = ['통합배송지', '배송지', '수취인주소'];
+const DELIVERY_MEMO_NAMES = ['배송메세지', '배송메시지', '배송메모', '배송시 요청사항', '배송요청사항'];
+
 // ============ per-platform row parsing -> common normalized structure ============
 function getPlatformSpec(platform){
   return platform === 'coupang'
@@ -744,6 +795,10 @@ function parseOneRow(row, platform, map, settings, rows, fileName){
       productAmount, shippingAmount, grossSales,
       marketplaceFee, shippingFee, otherPlatformFee,
       settlementAmount, hasActualSettlement, sourceFile: fileName,
+      buyerName: getColOrNull(row, map, BUYER_NAME_NAMES),
+      buyerPhone: getColOrNull(row, map, BUYER_PHONE_NAMES),
+      buyerAddress: getColOrNull(row, map, BUYER_ADDRESS_NAMES),
+      deliveryMemo: getColOrNull(row, map, DELIVERY_MEMO_NAMES),
     });
   } else {
     const name = getCol(row, map, ['상품명']);
@@ -801,6 +856,10 @@ function parseOneRow(row, platform, map, settings, rows, fileName){
       quantity, productAmount, shippingAmount, grossSales,
       marketplaceFee, shippingFee, otherPlatformFee,
       settlementAmount, hasActualSettlement, sourceFile: fileName,
+      buyerName: getColOrNull(row, map, BUYER_NAME_NAMES),
+      buyerPhone: getColOrNull(row, map, BUYER_PHONE_NAMES),
+      buyerAddress: getColOrNull(row, map, BUYER_ADDRESS_NAMES),
+      deliveryMemo: getColOrNull(row, map, DELIVERY_MEMO_NAMES),
     });
   }
 }
@@ -1478,6 +1537,10 @@ async function saveOrdersToDb(orders, storeSelection){
     allocated_other_cost: o.allocatedOtherCost,
     net_profit: o.netProfit,
     margin_rate: o.marginRate,
+    buyer_name: o.buyerName || null,
+    buyer_phone: o.buyerPhone || null,
+    buyer_address: o.buyerAddress || null,
+    delivery_memo: o.deliveryMemo || null,
     updated_at: new Date().toISOString(),
   }));
 
@@ -2139,6 +2202,7 @@ function savedOrderSummaryHtml(o){
   return `
     <div class="order-card-top"><span>${isNew ? '<span class="new-badge">NEW</span>' : ''}${escapeHtml(o.order_date)}</span><span class="${platformClass}"><span class="platform-logo ${logoClass}">${logoChar}</span>${escapeHtml(PLATFORM_LABELS[o.platform] || o.platform)}</span></div>
     <div class="order-card-name">${escapeHtml(o.product_name)}${o.option_name ? ' (' + escapeHtml(o.option_name) + ')' : ''}${o.quantity > 1 ? ` × ${o.quantity}` : ''}</div>
+    ${o.buyer_name ? `<div class="order-card-buyer" onclick="event.stopPropagation(); openBuyerInfoSheet('${o.id}')">👤 ${escapeHtml(o.buyer_name)}${o.delivered ? ' <span class="delivered-badge">· 배송완료</span>' : ''} ›</div>` : ''}
     ${storeTitle ? `<div style="margin:2px 0 6px;"><span class="store-badge">🏷 ${escapeHtml(storeTitle)}</span></div>` : ''}
     <div class="order-card-nums">
       <span>매출<b>${formatWon(o.gross_sales)}</b></span>
@@ -2150,6 +2214,57 @@ function savedOrderSummaryHtml(o){
       <span>마진율<b>${o.margin_rate.toFixed(1)}%</b></span>
     </div>
   `;
+}
+
+// 주문자 정보 바텀시트 - 이름/연락처/배송지는 엑셀에서 읽어온 값 그대로 보여주기만
+// 하고, 배송 메모와 배송완료 여부만 여기서 고쳐서 저장할 수 있다.
+let buyerInfoOrderId = null;
+
+function openBuyerInfoSheet(id){
+  const order = (window._savedOrdersCache || []).find(o => o.id === id);
+  if(!order) return;
+  buyerInfoOrderId = id;
+  document.getElementById('buyerInfoName').textContent = order.buyer_name || '-';
+  document.getElementById('buyerInfoPhone').textContent = order.buyer_phone || '-';
+  document.getElementById('buyerInfoAddress').textContent = order.buyer_address || '-';
+  document.getElementById('buyerInfoMemo').value = order.delivery_memo || '';
+  document.getElementById('buyerInfoDelivered').checked = !!order.delivered;
+  document.getElementById('buyerInfoStatus').textContent = '';
+  document.getElementById('buyerInfoSheetOverlay').style.display = 'flex';
+}
+
+function closeBuyerInfoSheet(){
+  document.getElementById('buyerInfoSheetOverlay').style.display = 'none';
+  buyerInfoOrderId = null;
+}
+
+async function saveBuyerInfo(){
+  if(!buyerInfoOrderId) return;
+  const id = buyerInfoOrderId;
+  const statusEl = document.getElementById('buyerInfoStatus');
+  const row = {
+    delivery_memo: document.getElementById('buyerInfoMemo').value.trim() || null,
+    delivered: document.getElementById('buyerInfoDelivered').checked,
+  };
+  statusEl.textContent = '저장하는 중...';
+  statusEl.style.color = '';
+
+  const { error } = await sb.from('settlement_orders').update(row).eq('id', id);
+  if(error){
+    statusEl.textContent = '저장에 실패했어요. 다시 시도해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  const idx = (window._savedOrdersCache || []).findIndex(o => o.id === id);
+  if(idx !== -1){
+    window._savedOrdersCache[idx] = Object.assign({}, window._savedOrdersCache[idx], row);
+    const summaryEl = document.getElementById('savedOrderSummaryInner-' + id);
+    if(summaryEl) summaryEl.innerHTML = savedOrderSummaryHtml(window._savedOrdersCache[idx]);
+  }
+
+  statusEl.textContent = '✓ 저장됐어요.';
+  statusEl.style.color = 'var(--teal)';
 }
 
 function toggleSelectMode(){
