@@ -64,9 +64,11 @@
   .tab-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
   .order-card{ border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:8px; background:#fff; cursor:pointer; }
   .order-card.selected{ border-color:var(--teal); background:#F3F8F7; }
-  .group-folder-card{ display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:8px; background:#FAF8F1; cursor:pointer; }
-  .group-folder-card .group-folder-name{ font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .group-folder-card .group-folder-count{ font-size:12.5px; color:var(--ink-soft); flex-shrink:0; }
+  .group-folder-card, .group-back-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:8px; background:#FAF8F1; cursor:pointer; }
+  .group-folder-card .group-folder-name, .group-back-row .group-folder-name{ font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .group-folder-card .group-folder-count, .group-back-row .group-folder-count{ font-size:12.5px; color:var(--ink-soft); flex-shrink:0; }
+  .group-back-row{ background:#fff; border-style:dashed; }
+  .new-badge{ display:inline-block; background:var(--accent); color:#fff; font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; margin-right:6px; vertical-align:middle; }
   .date-select-group{ display:flex; gap:6px; }
   .date-select-group select{ flex:1; min-width:0; width:auto; }
   .mini-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); }
@@ -355,7 +357,7 @@
         <h2 style="margin:0;">주문 목록</h2>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <button class="mini-btn" id="selectAllBtn" onclick="selectAllVisibleOrders()" style="display:none;">전체 선택</button>
-          <button class="mini-btn" id="selectModeBtn" onclick="toggleSelectMode()">선택</button>
+          <button class="mini-btn" id="selectModeBtn" onclick="toggleSelectMode()">선택 수정</button>
           <button class="mini-btn danger" id="bulkDeleteBtn" onclick="submitBulkDelete()" style="display:none;">삭제</button>
         </div>
       </div>
@@ -431,9 +433,9 @@
       <div class="cost-row"><span>총 매출</span><span id="savedSumGross">₩0</span></div>
       <div class="cost-row"><span>정산 예정액</span><span id="savedSumSettlement">₩0</span></div>
       <div class="cost-row"><span>총 플랫폼 수수료</span><span class="amt-neg" id="savedSumFees">-₩0</span></div>
-      <div class="cost-row"><span>순이익</span><span id="savedSumProfit" style="font-weight:700; color:var(--teal);">₩0</span></div>
-      <div class="cost-row"><span>마진율</span><span id="savedSumMargin">0.0%</span></div>
       <div class="cost-row"><span>원가+추가비용</span><span class="amt-neg" id="savedSumCostsAndExpense">-₩0</span></div>
+      <div class="cost-row"><span>마진율</span><span id="savedSumMargin">0.0%</span></div>
+      <div class="cost-row"><span>순이익</span><span id="savedSumProfit" style="font-weight:700; color:var(--teal);">₩0</span></div>
 
       <details class="adv-settings" style="margin-top:16px; padding-top:14px; border-top:1px dashed var(--line);">
         <summary>비용 상세</summary>
@@ -505,6 +507,16 @@ let savedReports = [];
 let reportTitleById = {};
 let addOrderFields = null;
 const ORDER_DRAFT_KEY = 'momoseller_order_draft';
+
+// 이번 세션에서 새로 등록한 주문에 NEW 배너를 붙이기 위한 표시 - DB에는 없는
+// 순전히 화면용 상태라 새로고침하거나 정산 등록 탭으로 나가면 그냥 비워진다.
+// id가 아니라 (플랫폼,주문번호,상품명,옵션명) 자연키로 추적하는 이유는
+// saveOrdersToDb의 upsert가 새로 생성된 행의 id를 돌려주지 않기 때문 -
+// upsert 자체가 같은 자연키로 충돌을 판단하니 이 키로도 똑같이 식별 가능하다.
+let recentlyAddedOrderKeys = new Set();
+function savedOrderNaturalKey(o){
+  return `${o.platform}|${o.order_number}|${o.product_name}|${o.option_name || ''}`;
+}
 
 let selectMode = false;
 let selectedOrderIds = new Set();
@@ -1476,6 +1488,8 @@ async function saveOrdersToDb(orders, storeSelection){
     return false;
   }
 
+  rows.forEach(r => recentlyAddedOrderKeys.add(savedOrderNaturalKey(r)));
+
   statusEl.textContent = `✓ ${rows.length}건 저장했어요.`;
   statusEl.className = 'status';
   return true;
@@ -1534,6 +1548,8 @@ async function setPageTab(tab){
   document.querySelectorAll('.tab-btn[data-page-tab]').forEach(b => b.classList.toggle('active', b.dataset.pageTab === tab));
   document.getElementById('uploadTab').style.display = tab === 'upload' ? 'block' : 'none';
   document.getElementById('ordersTab').style.display = tab === 'orders' ? 'block' : 'none';
+  // 방금 등록한 주문의 NEW 배너는 저장된정산 탭을 벗어나면(=나갔다 오면) 지워짐
+  if(tab === 'upload') recentlyAddedOrderKeys.clear();
   if(tab === 'orders'){
     await refreshStoreOptions();
     renderSavedOrdersTab();
@@ -1714,27 +1730,39 @@ async function renderSavedOrdersTab(){
   // 전체 보기(storeFilterValue==='all')일 때는 그룹별 주문을 폴더 카드 하나로
   // 접어두고, 그룹 없는 주문만 바로 펼쳐서 보여준다 - 선택 모드에서는 그룹에
   // 속한 주문도 체크해서 일괄 처리할 수 있어야 하니 폴더 뷰를 건너뛴다.
-  if(storeFilterValue === 'all' && !selectMode){
+  // 정산 그룹을 아예 안 쓰는 사용자라면 폴더라는 개념 자체가 없으니, 그룹이
+  // 하나도 없을 땐 평소처럼 평평한 목록 + 추가비용/정산요약을 그대로 보여준다.
+  const isFolderView = storeFilterValue === 'all' && !selectMode && savedReports.length > 0;
+  if(isFolderView){
     const grouped = {};
-    const groupOrder = [];
-    const ungrouped = [];
     orders.forEach(o => {
       if(o.report_id){
-        if(!grouped[o.report_id]){ grouped[o.report_id] = []; groupOrder.push(o.report_id); }
+        if(!grouped[o.report_id]) grouped[o.report_id] = [];
         grouped[o.report_id].push(o);
-      } else {
-        ungrouped.push(o);
       }
     });
-    const folderHtml = groupOrder.map(id => `
-      <div class="group-folder-card" onclick="openGroupFolder('${id}')">
-        <span class="group-folder-name">📁 ${escapeHtml(reportTitleById[id] || '(이름 없음)')}</span>
-        <span class="group-folder-count">${grouped[id].length}건 ›</span>
+    const ungrouped = orders.filter(o => !o.report_id);
+    // 폴더는 지금 필터에 걸리는 주문이 있는 그룹뿐 아니라, 존재하는 정산 그룹을
+    // 전부 보여준다 - 기간 필터 때문에 이 그룹에 딱 0건 걸린다고 폴더 자체가
+    // 사라지면 안 되니 (그 그룹 자체가 없어진 건 아니므로) 0건으로 표시한다.
+    const folderHtml = savedReports.map(r => `
+      <div class="group-folder-card" onclick="openGroupFolder('${r.id}')">
+        <span class="group-folder-name">📁 ${escapeHtml(r.title)}</span>
+        <span class="group-folder-count">${(grouped[r.id] || []).length}건 ›</span>
       </div>
     `).join('');
     document.getElementById('savedOrderListWrap').innerHTML = folderHtml + ungrouped.map(orderCardHtml).join('');
   } else {
-    document.getElementById('savedOrderListWrap').innerHTML = orders.map(orderCardHtml).join('');
+    // 폴더를 눌러 특정 그룹 안으로 들어온 상태(선택 모드는 제외)면, 다시 폴더
+    // 목록으로 접을 수 있는 버튼을 목록 맨 위에 보여준다.
+    const showBackToFolders = !selectMode && storeFilterValue !== 'all' && storeFilterValue !== '__untitled__';
+    const backHtml = showBackToFolders ? `
+      <div class="group-back-row" onclick="closeGroupFolder()">
+        <span class="group-folder-name">‹ 전체 목록으로</span>
+        <span class="group-folder-count">접기</span>
+      </div>
+    ` : '';
+    document.getElementById('savedOrderListWrap').innerHTML = backHtml + orders.map(orderCardHtml).join('');
   }
 
   const selectAllBtn = document.getElementById('selectAllBtn');
@@ -1743,8 +1771,21 @@ async function renderSavedOrdersTab(){
     selectAllBtn.textContent = allSelected ? '전체 해제' : '전체 선택';
   }
 
+  // 추가비용·정산요약은 실제 주문 목록(폴더 안이든, 그룹 없는 평평한 목록이든)과
+  // 한 세트라서, 폴더가 접힌 전체보기에서는 무엇을 요약하는 건지 애매하니 숨긴다.
+  document.getElementById('expenseCard').style.display = isFolderView ? 'none' : '';
+  document.getElementById('savedSummaryCard').style.display = isFolderView ? 'none' : '';
+
   renderBulkEditPanel();
   renderSavedSummary(orders);
+}
+
+function closeGroupFolder(){
+  storeFilterValue = 'all';
+  const sel = document.getElementById('storeFilterSelect');
+  if(sel) sel.value = 'all';
+  document.getElementById('deleteStoreBtn').style.display = 'none';
+  renderSavedOrdersTab();
 }
 
 // bottom-of-page 정산 요약 card: computed fresh from whatever's currently
@@ -2027,8 +2068,9 @@ function savedOrderSummaryHtml(o){
   const logoClass = o.platform === 'coupang' ? 'coupang' : o.platform === 'smartstore' ? 'smartstore' : 'unknown';
   const logoChar = o.platform === 'coupang' ? 'C' : o.platform === 'smartstore' ? 'N' : '?';
   const totalFee = (o.marketplace_fee || 0) + (o.shipping_fee || 0) + (o.other_platform_fee || 0);
+  const isNew = recentlyAddedOrderKeys.has(savedOrderNaturalKey(o));
   return `
-    <div class="order-card-top"><span>${escapeHtml(o.order_date)}</span><span class="${platformClass}"><span class="platform-logo ${logoClass}">${logoChar}</span>${escapeHtml(PLATFORM_LABELS[o.platform] || o.platform)}</span></div>
+    <div class="order-card-top"><span>${isNew ? '<span class="new-badge">NEW</span>' : ''}${escapeHtml(o.order_date)}</span><span class="${platformClass}"><span class="platform-logo ${logoClass}">${logoChar}</span>${escapeHtml(PLATFORM_LABELS[o.platform] || o.platform)}</span></div>
     <div class="order-card-name">${escapeHtml(o.product_name)}${o.option_name ? ' (' + escapeHtml(o.option_name) + ')' : ''}${o.quantity > 1 ? ` × ${o.quantity}` : ''}</div>
     ${storeTitle ? `<div style="margin:2px 0 6px;"><span class="store-badge">🏷 ${escapeHtml(storeTitle)}</span></div>` : ''}
     <div class="order-card-nums">
@@ -2046,7 +2088,7 @@ function savedOrderSummaryHtml(o){
 function toggleSelectMode(){
   selectMode = !selectMode;
   selectedOrderIds.clear();
-  document.getElementById('selectModeBtn').textContent = selectMode ? '선택 취소' : '선택';
+  document.getElementById('selectModeBtn').textContent = selectMode ? '선택 취소' : '선택 수정';
   document.getElementById('selectModeBtn').classList.toggle('active', selectMode);
   document.getElementById('selectAllBtn').style.display = selectMode ? 'inline-block' : 'none';
   document.getElementById('selectAllBtn').textContent = '전체 선택';
@@ -2107,17 +2149,14 @@ function renderBulkEditPanel(){
 
   if(!bulkSelectedField) bulkSelectedField = BULK_EDIT_FIELDS[0].key;
 
-  const groupOptions = '<option value="__untitled__">그룹 없음</option>'
+  const groupOptions = '<option value="">정산 그룹 이동하기</option>'
+    + '<option value="__untitled__">그룹 없음</option>'
     + savedReports.map(r => `<option value="${r.id}">${escapeHtml(r.title)}</option>`).join('');
   const fieldOptions = BULK_EDIT_FIELDS.map(f => `<option value="${f.key}"${f.key === bulkSelectedField ? ' selected' : ''}>${f.label}</option>`).join('');
 
   panel.innerHTML = `
     <div class="hint" style="margin-top:0;">정산 그룹을 바꾸거나, 아래에서 항목을 고르고 값을 입력하면 선택한 ${count}건 전체에 반영돼요.</div>
-    <div class="bulk-field-row">
-      <input type="checkbox" id="bulkApply-report_id">
-      <label for="bulkApply-report_id">정산 그룹 이동하기</label>
-      <select id="bulkValue-report_id">${groupOptions}</select>
-    </div>
+    <select id="bulkValue-report_id" class="bulk-field-select">${groupOptions}</select>
     <select id="bulkFieldSelect" class="bulk-field-select" style="margin-top:10px;" onchange="selectBulkField(this.value)">${fieldOptions}</select>
     <input type="number" id="bulkFieldValue" class="bulk-value-input" placeholder="가격 수정" min="0" style="margin-top:8px;">
     <div class="hint" id="bulkEditStatus" style="margin-top:8px;"></div>
@@ -2137,10 +2176,11 @@ function selectBulkField(key){
 
 async function submitBulkEdit(){
   const statusEl = document.getElementById('bulkEditStatus');
-  const groupChecked = document.getElementById('bulkApply-report_id').checked;
+  const groupSelectVal = document.getElementById('bulkValue-report_id').value;
+  const groupChanged = groupSelectVal !== '';
   const fieldValueRaw = document.getElementById('bulkFieldValue').value;
   const hasFieldValue = fieldValueRaw !== '';
-  if(!hasFieldValue && !groupChecked){
+  if(!hasFieldValue && !groupChanged){
     statusEl.textContent = '변경할 항목을 체크하거나 값을 입력해주세요.';
     statusEl.style.color = 'var(--error)';
     return;
@@ -2157,8 +2197,8 @@ async function submitBulkEdit(){
     }
     values[bulkSelectedField] = n;
   }
-  const newReportId = groupChecked
-    ? (document.getElementById('bulkValue-report_id').value === '__untitled__' ? null : document.getElementById('bulkValue-report_id').value)
+  const newReportId = groupChanged
+    ? (groupSelectVal === '__untitled__' ? null : groupSelectVal)
     : undefined;
 
   const ids = Array.from(selectedOrderIds);
@@ -2187,7 +2227,7 @@ async function submitBulkEdit(){
       margin_rate: grossSales > 0 ? (netProfit / grossSales) * 100 : 0,
       updated_at: new Date().toISOString(),
     };
-    if(groupChecked) result.report_id = newReportId;
+    if(groupChanged) result.report_id = newReportId;
     return result;
   }).filter(Boolean);
 
@@ -2213,7 +2253,7 @@ async function submitBulkEdit(){
   selectMode = false;
   selectedOrderIds.clear();
   bulkSelectedField = null;
-  document.getElementById('selectModeBtn').textContent = '선택';
+  document.getElementById('selectModeBtn').textContent = '선택 수정';
   document.getElementById('selectModeBtn').classList.remove('active');
   document.getElementById('selectAllBtn').style.display = 'none';
   renderSavedOrdersTab();
@@ -2238,7 +2278,7 @@ async function submitBulkDelete(){
 
   selectMode = false;
   selectedOrderIds.clear();
-  document.getElementById('selectModeBtn').textContent = '선택';
+  document.getElementById('selectModeBtn').textContent = '선택 수정';
   document.getElementById('selectModeBtn').classList.remove('active');
   document.getElementById('selectAllBtn').style.display = 'none';
   renderSavedOrdersTab();
@@ -2579,6 +2619,8 @@ async function submitNewSavedOrder(){
     statusEl.style.color = 'var(--error)';
     return;
   }
+
+  recentlyAddedOrderKeys.add(savedOrderNaturalKey(row));
 
   if(resolved.reportId){
     await refreshStoreOptions();
