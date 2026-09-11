@@ -69,6 +69,11 @@
   .section-toggle{ display:flex; align-items:center; justify-content:space-between; cursor:pointer; }
   .section-toggle h2{ margin:0; }
   .section-toggle-caret{ color:var(--ink-soft); font-size:14px; flex-shrink:0; }
+  .order-pagination{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .order-pagination select{ width:auto; padding:6px 8px; font-size:12.5px; }
+  .order-pagination-nav{ display:flex; align-items:center; gap:8px; }
+  .order-pagination-indicator{ font-size:12.5px; color:var(--ink-soft); min-width:44px; text-align:center; }
+  .order-pagination .mini-btn:disabled{ opacity:0.4; cursor:default; }
   .date-select-group{ display:flex; gap:6px; }
   .date-select-group select{ flex:1; min-width:0; width:auto; }
   .mini-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); }
@@ -361,10 +366,10 @@
       </div>
       <div class="compact-fields">
         <div class="field-block">
-          <input type="text" id="savedOrderSearch" placeholder="상품명 검색" oninput="renderSavedOrdersTab()">
+          <input type="text" id="savedOrderSearch" placeholder="상품명 검색" oninput="orderListPage=1; renderSavedOrdersTab()">
         </div>
         <div class="field-block" style="margin-bottom:0;">
-          <select id="savedOrderSort" onchange="renderSavedOrdersTab()">
+          <select id="savedOrderSort" onchange="orderListPage=1; renderSavedOrdersTab()">
             <option value="date_desc">최신순</option>
             <option value="gross_desc">매출 높은순</option>
             <option value="gross_asc">매출 낮은순</option>
@@ -376,6 +381,7 @@
       <div class="hint" style="margin-top:12px; margin-bottom:12px;" id="savedOrderListHint">지금까지 저장된 모든 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.</div>
       <div id="bulkEditPanel" class="bulk-edit-panel" style="display:none;"></div>
       <div id="savedOrderListWrap"></div>
+      <div id="orderListPaginationWrap"></div>
       <div class="hint" id="savedOrderListEmptyNote" style="display:none; text-align:center;">저장된 주문이 아직 없어요.</div>
     </div>
 
@@ -517,6 +523,8 @@ let customRangeStart = null; // set when 'custom' period is applied
 let customRangeEnd = null;
 let storeFilterValue = 'all'; // 'all' | '__untitled__' | a settlement_reports.id
 let platformFilterValue = 'all'; // 'all' | 'coupang' | 'smartstore'
+let orderListPage = 1;
+let orderListPageSize = 50; // 50 | 100 | 200
 let lastSavedReportId = null; // report just created by the most recent saveOrdersToDb call, if titled
 let savedReports = [];
 let reportTitleById = {};
@@ -1616,6 +1624,7 @@ function updateFilterTriggerLabels(periodLabel){
 
 function applyPeriodFilter(key){
   periodFilter = key;
+  orderListPage = 1;
   if(key !== 'custom'){
     customRangeStart = null; customRangeEnd = null;
   } else if(!customRangeStart || !customRangeEnd){
@@ -1641,6 +1650,7 @@ function applyCustomOrdersRange(){
   }
   customRangeStart = start;
   customRangeEnd = end;
+  orderListPage = 1;
   renderSavedOrdersTab();
 }
 
@@ -1678,9 +1688,52 @@ function orderCardHtml(o){
 
 function openGroupFolder(groupId){
   storeFilterValue = groupId;
+  orderListPage = 1;
   const sel = document.getElementById('storeFilterSelect');
   if(sel) sel.value = groupId;
   document.getElementById('deleteStoreBtn').style.display = 'inline-block';
+  renderSavedOrdersTab();
+}
+
+// 주문목록이 길어져도 카드를 한번에 다 그리지 않고 페이지 단위로 잘라서
+// 보여준다 - 정산요약/일괄수정/전체선택은 항상 필터에 걸린 전체 목록
+// 기준이고, paginateOrders()는 오직 화면에 그릴 카드만 잘라낸다.
+function clampOrderListPage(totalCount){
+  const totalPages = Math.max(1, Math.ceil(totalCount / orderListPageSize));
+  if(orderListPage > totalPages) orderListPage = totalPages;
+  if(orderListPage < 1) orderListPage = 1;
+  return totalPages;
+}
+function paginateOrders(orders){
+  clampOrderListPage(orders.length);
+  const startIdx = (orderListPage - 1) * orderListPageSize;
+  return orders.slice(startIdx, startIdx + orderListPageSize);
+}
+function orderPaginationHtml(totalCount){
+  if(totalCount === 0) return '';
+  const totalPages = clampOrderListPage(totalCount);
+  return `
+    <div class="order-pagination">
+      <select onchange="changeOrderListPageSize(this.value)">
+        <option value="50" ${orderListPageSize === 50 ? 'selected' : ''}>50개씩 보기</option>
+        <option value="100" ${orderListPageSize === 100 ? 'selected' : ''}>100개씩 보기</option>
+        <option value="200" ${orderListPageSize === 200 ? 'selected' : ''}>200개씩 보기</option>
+      </select>
+      <div class="order-pagination-nav">
+        <button type="button" class="mini-btn" onclick="changeOrderListPage(${orderListPage - 1})" ${orderListPage <= 1 ? 'disabled' : ''}>‹ 이전</button>
+        <span class="order-pagination-indicator">${orderListPage} / ${totalPages}</span>
+        <button type="button" class="mini-btn" onclick="changeOrderListPage(${orderListPage + 1})" ${orderListPage >= totalPages ? 'disabled' : ''}>다음 ›</button>
+      </div>
+    </div>
+  `;
+}
+function changeOrderListPage(page){
+  orderListPage = page;
+  renderSavedOrdersTab();
+}
+function changeOrderListPageSize(size){
+  orderListPageSize = parseInt(size, 10);
+  orderListPage = 1;
   renderSavedOrdersTab();
 }
 
@@ -1758,7 +1811,9 @@ async function renderSavedOrdersTab(){
         <span class="group-folder-count">${(grouped[r.id] || []).length}건 ›</span>
       </div>
     `).join('');
-    document.getElementById('savedOrderListWrap').innerHTML = folderHtml + ungrouped.map(orderCardHtml).join('');
+    const pagedUngrouped = paginateOrders(ungrouped);
+    document.getElementById('savedOrderListWrap').innerHTML = folderHtml + pagedUngrouped.map(orderCardHtml).join('');
+    document.getElementById('orderListPaginationWrap').innerHTML = orderPaginationHtml(ungrouped.length);
   } else {
     // 폴더를 눌러 특정 그룹 안으로 들어온 상태(선택 모드는 제외)면, 다시 폴더
     // 목록으로 접을 수 있는 버튼을 목록 맨 위에 보여준다.
@@ -1769,7 +1824,9 @@ async function renderSavedOrdersTab(){
         <span class="group-folder-count">접기</span>
       </div>
     ` : '';
-    document.getElementById('savedOrderListWrap').innerHTML = backHtml + orders.map(orderCardHtml).join('');
+    const pagedOrders = paginateOrders(orders);
+    document.getElementById('savedOrderListWrap').innerHTML = backHtml + pagedOrders.map(orderCardHtml).join('');
+    document.getElementById('orderListPaginationWrap').innerHTML = orderPaginationHtml(orders.length);
   }
 
   const selectAllBtn = document.getElementById('selectAllBtn');
@@ -1789,6 +1846,7 @@ async function renderSavedOrdersTab(){
 
 function closeGroupFolder(){
   storeFilterValue = 'all';
+  orderListPage = 1;
   const sel = document.getElementById('storeFilterSelect');
   if(sel) sel.value = 'all';
   document.getElementById('deleteStoreBtn').style.display = 'none';
@@ -2046,12 +2104,14 @@ function applyStoreFilter(){
   const val = document.getElementById('storeFilterSelect').value;
   closeFilterSheet();
   storeFilterValue = val;
+  orderListPage = 1;
   document.getElementById('deleteStoreBtn').style.display = (storeFilterValue !== 'all' && storeFilterValue !== '__untitled__') ? 'inline-block' : 'none';
   renderSavedOrdersTab();
 }
 
 function applyPlatformFilter(val){
   platformFilterValue = val;
+  orderListPage = 1;
   document.querySelectorAll('#platformFilterWrap .period-chip[data-platform]').forEach(b => b.classList.toggle('active', b.dataset.platform === val));
   renderSavedOrdersTab();
   closeFilterSheet();
@@ -2095,6 +2155,7 @@ function savedOrderSummaryHtml(o){
 function toggleSelectMode(){
   selectMode = !selectMode;
   selectedOrderIds.clear();
+  orderListPage = 1;
   document.getElementById('selectModeBtn').textContent = selectMode ? '선택 취소' : '선택 수정';
   document.getElementById('selectModeBtn').classList.toggle('active', selectMode);
   document.getElementById('selectAllBtn').style.display = selectMode ? 'inline-block' : 'none';
@@ -2649,6 +2710,7 @@ async function submitNewSavedOrder(){
 async function goToSavedOrdersTab(){
   periodFilter = 'all';
   customRangeStart = null; customRangeEnd = null;
+  orderListPage = 1;
   setUploadAccordionOpen(false);
   await refreshStoreOptions();
   renderSavedOrdersTab();
