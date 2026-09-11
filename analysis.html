@@ -13,6 +13,39 @@
   .tab-row{ display:flex; gap:6px; margin-bottom:14px; }
   .tab-btn{ flex:1; text-align:center; padding:9px 4px; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:3px; cursor:pointer; }
   .tab-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
+  .period-chip-row{ display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; flex-wrap:wrap; }
+  .period-chip{ flex-shrink:0; white-space:nowrap; padding:6px 10px; font-size:12.5px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:14px; cursor:pointer; }
+  .period-chip.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
+  .date-input-wrap{ position:relative; }
+  .date-display{
+    padding:8px 10px; font-size:13px; color:var(--ink);
+    border:1px solid var(--line); border-radius:3px; background:#fff;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .date-input-wrap input[type=date]{
+    position:absolute; inset:0; width:100%; height:100%;
+    opacity:0; margin:0; padding:0; border:0; box-sizing:border-box;
+  }
+  .filter-trigger{
+    width:100%; text-align:left; background:#FAF8F1; border:1px solid var(--line);
+    border-radius:4px; padding:8px 10px; cursor:pointer;
+  }
+  .filter-trigger-label{ font-size:11px; color:var(--ink-soft); margin-bottom:2px; }
+  .filter-trigger-value{ font-size:12.5px; font-weight:500; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .filter-trigger-value::after{ content:' \25BE'; color:var(--ink-soft); font-weight:400; }
+  .sheet-overlay{
+    position:fixed; inset:0; background:rgba(35,40,31,0.45); z-index:200;
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  .sheet-panel{
+    background:#FBF9F2; width:100%; max-width:640px; border-radius:16px 16px 0 0;
+    padding:8px 20px 24px; min-height:30vh; max-height:82vh; overflow-y:auto; box-sizing:border-box;
+  }
+  .sheet-handle{ width:36px; height:4px; background:var(--line); border-radius:2px; margin:6px auto 14px; }
+  .sheet-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .sheet-header h3{ font-family:'Noto Serif KR', serif; font-size:16px; margin:0; }
+  .compact-fields label{ margin-bottom:4px; }
+  .compact-fields .field-block{ margin-bottom:10px; }
   .amt-neg{ color:var(--error); }
   .summary-big{ text-align:center; padding:6px 0 20px; }
   .summary-big .label{ font-size:13px; color:var(--ink-soft); margin-bottom:6px; }
@@ -148,18 +181,11 @@
 
   <div id="periodTab" style="display:none;">
     <div class="card">
-      <div class="tab-row">
-        <button class="tab-btn" data-months="3" onclick="setPeriodMonths(3)">3개월</button>
-        <button class="tab-btn active" data-months="6" onclick="setPeriodMonths(6)">6개월</button>
-        <button class="tab-btn" data-months="12" onclick="setPeriodMonths(12)">12개월</button>
-      </div>
-      <div class="row" style="margin-top:10px; align-items:center;">
-        <div><select id="customStartMonth"></select></div>
-        <span style="color:var(--ink-soft); font-size:13px;">~</span>
-        <div><select id="customEndMonth"></select></div>
-      </div>
-      <button class="secondary" onclick="applyCustomRange()">직접 지정한 기간 보기</button>
-      <div class="hint" id="customRangeStatus" style="display:none;"></div>
+      <button type="button" class="filter-trigger" onclick="openPeriodSheet()">
+        <div class="filter-trigger-label">기간 선택</div>
+        <div class="filter-trigger-value" id="periodTriggerLabel">6달</div>
+      </button>
+      <div class="hint" id="periodRangeLabel" style="margin-top:8px; margin-bottom:0;"></div>
       <div class="field-block" style="margin-top:14px; margin-bottom:16px;">
         <select id="periodMetric" onchange="renderPeriodChart()">
           <option value="grossSales">매출</option>
@@ -170,6 +196,49 @@
       </div>
       <div id="periodChart"></div>
       <div class="hint" id="periodEmptyNote" style="display:none; text-align:center;">저장된 정산 데이터가 없어요.</div>
+    </div>
+  </div>
+
+  <div id="periodSheetOverlay" class="sheet-overlay" style="display:none;" onclick="closePeriodSheet()">
+    <div class="sheet-panel" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <h3>기간 선택</h3>
+        <button type="button" class="icon-btn" onclick="closePeriodSheet()" aria-label="닫기">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="sheet-body compact-fields">
+        <div class="period-chip-row" id="periodChipRow">
+          <button type="button" class="period-chip" data-period="today" onclick="applyAnalysisPeriodFilter('today')">오늘</button>
+          <button type="button" class="period-chip" data-period="week" onclick="applyAnalysisPeriodFilter('week')">1주</button>
+          <button type="button" class="period-chip" data-period="month1" onclick="applyAnalysisPeriodFilter('month1')">1달</button>
+          <button type="button" class="period-chip" data-period="month3" onclick="applyAnalysisPeriodFilter('month3')">3달</button>
+          <button type="button" class="period-chip active" data-period="month6" onclick="applyAnalysisPeriodFilter('month6')">6달</button>
+          <button type="button" class="period-chip" data-period="year1" onclick="applyAnalysisPeriodFilter('year1')">1년</button>
+          <button type="button" class="period-chip" data-period="custom" onclick="applyAnalysisPeriodFilter('custom')">기간지정</button>
+        </div>
+        <div id="periodCustomRangeWrap" style="display:none; margin-top:12px;">
+          <div style="display:flex; align-items:flex-end; gap:8px;">
+            <div class="field-block" style="flex:1; min-width:0; margin-bottom:0;">
+              <label for="periodRangeStartDate">시작일</label>
+              <div class="date-input-wrap">
+                <div class="date-display" id="periodRangeStartDateDisplay">날짜 선택</div>
+                <input type="date" id="periodRangeStartDate" oninput="syncDateDisplay('periodRangeStartDate'); applyPeriodCustomRange();">
+              </div>
+            </div>
+            <span style="padding-bottom:9px; color:var(--ink-soft);">~</span>
+            <div class="field-block" style="flex:1; min-width:0; margin-bottom:0;">
+              <label for="periodRangeEndDate">종료일</label>
+              <div class="date-input-wrap">
+                <div class="date-display" id="periodRangeEndDateDisplay">날짜 선택</div>
+                <input type="date" id="periodRangeEndDate" oninput="syncDateDisplay('periodRangeEndDate'); applyPeriodCustomRange();">
+              </div>
+            </div>
+          </div>
+          <div class="hint" id="periodCustomRangeError" style="display:none; color:var(--error); margin-bottom:0;"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -188,8 +257,9 @@
 <script>
 let currentUser = null;
 let viewYear, viewMonth;
-let periodMonths = 6;
-let customRange = null;
+let periodFilterKey = 'month6'; // 'today' | 'week' | 'month1' | 'month3' | 'month6' | 'year1' | 'custom'
+let periodCustomStart = null; // 'YYYY-MM-DD', set when 'custom' period is applied
+let periodCustomEnd = null;
 let periodData = [];
 
 const PLATFORM_LABELS = { coupang: '쿠팡', smartstore: '스마트스토어', manual: '직접입력' };
@@ -199,23 +269,9 @@ requireAuth(function(user){
   const today = new Date();
   viewYear = today.getFullYear();
   viewMonth = today.getMonth() + 1;
-  populateMonthSelect(document.getElementById('customStartMonth'), 36);
-  populateMonthSelect(document.getElementById('customEndMonth'), 36);
+  setupPeriodRangePickers();
   renderReportTab();
 });
-
-function populateMonthSelect(selectEl, monthsBack){
-  const today = new Date();
-  let y = today.getFullYear(), m = today.getMonth() + 1;
-  selectEl.innerHTML = '';
-  for(let i = 0; i <= monthsBack; i++){
-    const opt = document.createElement('option');
-    opt.value = `${y}-${String(m).padStart(2, '0')}`;
-    opt.textContent = `${y}년 ${m}월`;
-    selectEl.appendChild(opt);
-    m--; if(m < 1){ m = 12; y--; }
-  }
-}
 
 function formatWon(n){
   const rounded = Math.round(n || 0);
@@ -227,6 +283,21 @@ function monthRangeISO(year, month){
   const lastDay = new Date(year, month, 0).getDate();
   const end = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   return { start, end };
+}
+
+function formatDateISO(d){
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function daysBetween(startISO, endISO){
+  const s = new Date(startISO + 'T00:00:00');
+  const e = new Date(endISO + 'T00:00:00');
+  return Math.round((e - s) / 86400000) + 1; // 양끝 날짜 포함
+}
+
+function syncDateDisplay(inputId){
+  const display = document.getElementById(inputId + 'Display');
+  if(display) display.textContent = document.getElementById(inputId).value || '날짜 선택';
 }
 
 async function fetchOrdersInRange(start, end){
@@ -414,71 +485,134 @@ function renderCompareRow(prefix, curr, prev){
   deltaEl.className = 'compare-delta ' + (diff >= 0 ? 'up' : 'down');
 }
 
-function setPeriodMonths(n){
-  periodMonths = n;
-  customRange = null;
-  document.getElementById('customRangeStatus').style.display = 'none';
-  document.querySelectorAll('#periodTab .tab-btn[data-months]').forEach(b => b.classList.toggle('active', Number(b.dataset.months) === n));
+// 정산 페이지의 기간선택 바텀시트와 똑같은 구조 - 오늘/1주/1달/3달/6달/1년은
+// 오늘 기준으로 자동 계산되는 날짜 범위, 기간지정만 사용자가 직접 시작일/종료일을
+// 고른다 (최대 3년, 윤년 감안해서 3*366일까지 허용).
+const MAX_CUSTOM_RANGE_DAYS = 366 * 3;
+function computeAnalysisPeriodRange(key){
+  const today = new Date();
+  const end = formatDateISO(today);
+  const d = new Date(today);
+  if(key === 'today') return { start: end, end };
+  if(key === 'week'){ d.setDate(d.getDate() - 6); return { start: formatDateISO(d), end }; }
+  if(key === 'month1'){ d.setMonth(d.getMonth() - 1); return { start: formatDateISO(d), end }; }
+  if(key === 'month3'){ d.setMonth(d.getMonth() - 3); return { start: formatDateISO(d), end }; }
+  if(key === 'month6'){ d.setMonth(d.getMonth() - 6); return { start: formatDateISO(d), end }; }
+  if(key === 'year1'){ d.setFullYear(d.getFullYear() - 1); return { start: formatDateISO(d), end }; }
+  return null;
+}
+function getActiveAnalysisPeriodRange(){
+  if(periodFilterKey === 'custom'){
+    return (periodCustomStart && periodCustomEnd) ? { start: periodCustomStart, end: periodCustomEnd } : null;
+  }
+  return computeAnalysisPeriodRange(periodFilterKey);
+}
+
+function setupPeriodRangePickers(){
+  const today = new Date();
+  const d = new Date(today);
+  d.setMonth(d.getMonth() - 6);
+  document.getElementById('periodRangeStartDate').value = formatDateISO(d);
+  document.getElementById('periodRangeEndDate').value = formatDateISO(today);
+  syncDateDisplay('periodRangeStartDate');
+  syncDateDisplay('periodRangeEndDate');
+}
+
+function openPeriodSheet(){
+  document.getElementById('periodSheetOverlay').style.display = 'flex';
+}
+function closePeriodSheet(){
+  document.getElementById('periodSheetOverlay').style.display = 'none';
+}
+
+function syncPeriodChipUI(){
+  document.querySelectorAll('#periodChipRow .period-chip[data-period]').forEach(b => b.classList.toggle('active', b.dataset.period === periodFilterKey));
+  document.getElementById('periodCustomRangeWrap').style.display = periodFilterKey === 'custom' ? 'block' : 'none';
+}
+
+function updatePeriodTriggerLabel(){
+  const periodNames = { today: '오늘', week: '1주', month1: '1달', month3: '3달', month6: '6달', year1: '1년', custom: '기간지정' };
+  document.getElementById('periodTriggerLabel').textContent = periodNames[periodFilterKey] || '기간 선택';
+}
+
+function applyAnalysisPeriodFilter(key){
+  periodFilterKey = key;
+  if(key !== 'custom'){
+    periodCustomStart = null; periodCustomEnd = null;
+  } else if(!periodCustomStart || !periodCustomEnd){
+    periodCustomStart = document.getElementById('periodRangeStartDate').value;
+    periodCustomEnd = document.getElementById('periodRangeEndDate').value;
+  }
+  syncPeriodChipUI();
+  updatePeriodTriggerLabel();
+  loadPeriodData();
+  if(key !== 'custom') closePeriodSheet();
+}
+
+// 칩/드롭다운과 달리 날짜를 하나만 고쳐도 시트가 바로 안 닫힌다 - 정산 페이지의
+// 기간지정과 같은 이유 (종료일을 마저 고치기 전에 시트가 사라지면 안 되니까).
+function applyPeriodCustomRange(){
+  const start = document.getElementById('periodRangeStartDate').value;
+  const end = document.getElementById('periodRangeEndDate').value;
+  const errEl = document.getElementById('periodCustomRangeError');
+  if(!start || !end) return;
+  if(start > end){
+    errEl.textContent = '시작일이 종료일보다 늦을 수 없어요.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if(daysBetween(start, end) > MAX_CUSTOM_RANGE_DAYS){
+    errEl.textContent = '한 번에 최대 3년까지 볼 수 있어요.';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  periodCustomStart = start;
+  periodCustomEnd = end;
+  updatePeriodTriggerLabel();
   loadPeriodData();
 }
 
-function applyCustomRange(){
-  const startVal = document.getElementById('customStartMonth').value;
-  const endVal = document.getElementById('customEndMonth').value;
-  const statusEl = document.getElementById('customRangeStatus');
-  statusEl.style.display = 'block';
-  statusEl.className = 'hint';
-
-  if(!startVal || !endVal){
-    statusEl.textContent = '시작월과 종료월을 모두 선택해주세요.';
-    statusEl.style.color = 'var(--error)';
-    return;
-  }
-  const [sy, sm] = startVal.split('-').map(Number);
-  const [ey, em] = endVal.split('-').map(Number);
-  if(sy > ey || (sy === ey && sm > em)){
-    statusEl.textContent = '시작월이 종료월보다 늦을 수 없어요.';
-    statusEl.style.color = 'var(--error)';
-    return;
-  }
-  const totalMonths = (ey - sy) * 12 + (em - sm) + 1;
-  if(totalMonths > 36){
-    statusEl.textContent = '한 번에 최대 36개월까지 볼 수 있어요.';
-    statusEl.style.color = 'var(--error)';
-    return;
-  }
-
-  customRange = { startYear: sy, startMonth: sm, endYear: ey, endMonth: em };
-  statusEl.textContent = `${sy}년 ${sm}월 ~ ${ey}년 ${em}월 기간을 보고 있어요.`;
-  statusEl.style.color = 'var(--ink-soft)';
-  document.querySelectorAll('#periodTab .tab-btn[data-months]').forEach(b => b.classList.remove('active'));
-  loadPeriodData();
-}
+// 기간이 한 달(31일) 이하로 짧으면 일별로, 길면 기존처럼 월별로 묶는다 - 예를
+// 들어 "오늘"이나 "1주"를 월별로 묶으면 막대가 1~2개뿐이라 의미가 없어진다.
+const DAILY_BUCKET_MAX_DAYS = 31;
 
 async function loadPeriodData(){
-  const months = [];
-  if(customRange){
-    let y = customRange.startYear, m = customRange.startMonth;
-    while(y < customRange.endYear || (y === customRange.endYear && m <= customRange.endMonth)){
+  const range = getActiveAnalysisPeriodRange();
+  if(!range){ periodData = []; renderPeriodChart(); return; }
+  const { start, end } = range;
+  const spanDays = daysBetween(start, end);
+  document.getElementById('periodRangeLabel').textContent = `${start} ~ ${end} · ${spanDays}일간`;
+
+  const orders = await fetchOrdersInRange(start, end);
+
+  if(spanDays <= DAILY_BUCKET_MAX_DAYS){
+    const days = [];
+    const d = new Date(start + 'T00:00:00');
+    const endD = new Date(end + 'T00:00:00');
+    while(d <= endD){
+      days.push(formatDateISO(d));
+      d.setDate(d.getDate() + 1);
+    }
+    periodData = days.map(dayISO => {
+      const stat = aggregate(orders.filter(o => o.order_date === dayISO));
+      const [, m, dd] = dayISO.split('-');
+      return { label: `${m}.${dd}`, grossSales: stat.grossSales, settlementAmount: stat.settlementAmount, netProfit: stat.netProfit, marginRate: stat.marginRate };
+    });
+  } else {
+    const months = [];
+    let y = Number(start.slice(0, 4)), m = Number(start.slice(5, 7));
+    const endY = Number(end.slice(0, 4)), endM = Number(end.slice(5, 7));
+    while(y < endY || (y === endY && m <= endM)){
       months.push({ year: y, month: m });
       m++; if(m > 12){ m = 1; y++; }
     }
-  } else {
-    let y = viewYear, m = viewMonth;
-    for(let i = 0; i < periodMonths; i++){
-      months.unshift({ year: y, month: m });
-      m--; if(m < 1){ m = 12; y--; }
-    }
+    periodData = months.map(({ year, month }) => {
+      const { start: ms, end: me } = monthRangeISO(year, month);
+      const stat = aggregate(orders.filter(o => o.order_date >= ms && o.order_date <= me));
+      return { label: `${year}.${String(month).padStart(2, '0')}`, grossSales: stat.grossSales, settlementAmount: stat.settlementAmount, netProfit: stat.netProfit, marginRate: stat.marginRate };
+    });
   }
-  const first = monthRangeISO(months[0].year, months[0].month);
-  const last = monthRangeISO(months[months.length - 1].year, months[months.length - 1].month);
-  const orders = await fetchOrdersInRange(first.start, last.end);
-
-  periodData = months.map(({ year, month }) => {
-    const { start, end } = monthRangeISO(year, month);
-    const stat = aggregate(orders.filter(o => o.order_date >= start && o.order_date <= end));
-    return { label: `${year}.${String(month).padStart(2, '0')}`, grossSales: stat.grossSales, settlementAmount: stat.settlementAmount, netProfit: stat.netProfit, marginRate: stat.marginRate };
-  });
 
   document.getElementById('periodEmptyNote').style.display = orders.length === 0 ? 'block' : 'none';
   renderPeriodChart();
