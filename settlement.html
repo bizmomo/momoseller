@@ -2113,7 +2113,10 @@ function toggleCostBreakdown(id){
 // ============ excel export (whatever's currently filtered/visible in 저장된 정산) ============
 function downloadSavedOrders(){
   const orders = window._savedOrdersCache || [];
-  if(orders.length === 0) return;
+  if(orders.length === 0){
+    alert('지금 필터 조건에 해당하는 저장된 주문이 없어서 다운로드할 내용이 없어요. 기간·상점·플랫폼 필터를 확인해주세요.');
+    return;
+  }
 
   const totalGross = orders.reduce((s, o) => s + (o.gross_sales || 0), 0);
   const totalSettlement = orders.reduce((s, o) => s + (o.settlement_amount || 0), 0);
@@ -2231,7 +2234,8 @@ function downloadSavedOrders(){
   XLSX.utils.book_append_sheet(wb, expenseWs, '추가비용');
 
   const today = new Date();
-  const fname = `모모셀러_정산_${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}.xlsx`;
+  const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}_${String(today.getHours()).padStart(2, '0')}${String(today.getMinutes()).padStart(2, '0')}${String(today.getSeconds()).padStart(2, '0')}`;
+  const fname = `모모셀러_정산_${stamp}.xlsx`;
   const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
   const blob = new Blob([buf], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
