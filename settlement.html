@@ -79,9 +79,10 @@
   .platform-smartstore{ color:var(--teal); font-weight:500; }
   .store-badge{ display:inline-block; background:#FFE896; color:#6B5300; font-size:11px; font-weight:500; padding:2px 7px; border-radius:3px; }
   .order-detail{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); font-size:12.5px; }
-  .order-form-fields label{ margin-bottom:4px; }
-  .order-form-fields .field-block{ margin-bottom:10px; }
-  .order-form-fields input[type=text], .order-form-fields input[type=number], .order-form-fields select{ padding:7px 10px; font-size:13.5px; }
+  .compact-fields label{ margin-bottom:4px; }
+  .compact-fields .field-block{ margin-bottom:10px; }
+  .compact-fields input[type=text], .compact-fields input[type=number], .compact-fields select{ padding:7px 10px; font-size:13.5px; }
+  .compact-card{ padding:16px 16px; margin-bottom:12px; }
   .order-detail-row{ display:flex; justify-content:space-between; padding:3px 0; }
   .order-detail-row.total{ font-weight:700; border-top:1px solid var(--line); margin-top:4px; padding-top:6px; }
   .cost-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; font-size:13.5px; border-bottom:1px solid var(--line); gap:8px; }
@@ -115,7 +116,7 @@
   .lock-row{ display:flex; gap:8px; margin-top:8px; }
   .lock-row input{ flex:1; }
   .period-chip-row{ display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
-  .period-chip{ flex-shrink:0; white-space:nowrap; padding:7px 12px; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:14px; cursor:pointer; }
+  .period-chip{ flex-shrink:0; white-space:nowrap; padding:6px 10px; font-size:12.5px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:14px; cursor:pointer; }
   .period-chip.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
 </style>
 </head>
@@ -233,7 +234,7 @@
   </div>
 
   <div id="ordersTab" style="display:none;">
-    <div class="card">
+    <div class="card compact-card compact-fields">
       <div style="display:flex; gap:6px; align-items:stretch;">
         <div class="period-chip-row" id="periodChipRow" style="flex:1; min-width:0;">
           <button type="button" class="period-chip active" data-period="all" onclick="applyPeriodFilter('all')">전체</button>
@@ -273,7 +274,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card compact-card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; flex-wrap:wrap; gap:6px;">
         <h2 style="margin:0;">주문 목록</h2>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
@@ -282,17 +283,19 @@
           <button class="mini-btn danger" id="bulkDeleteBtn" onclick="submitBulkDelete()" style="display:none;">삭제</button>
         </div>
       </div>
-      <div class="field-block">
-        <input type="text" id="savedOrderSearch" placeholder="상품명 검색" oninput="renderSavedOrdersTab()">
-      </div>
-      <div class="field-block" style="margin-bottom:0;">
-        <select id="savedOrderSort" onchange="renderSavedOrdersTab()">
-          <option value="date_desc">최신순</option>
-          <option value="gross_desc">매출 높은순</option>
-          <option value="gross_asc">매출 낮은순</option>
-          <option value="profit_desc">순이익 높은순</option>
-          <option value="margin_asc">마진율 낮은순</option>
-        </select>
+      <div class="compact-fields">
+        <div class="field-block">
+          <input type="text" id="savedOrderSearch" placeholder="상품명 검색" oninput="renderSavedOrdersTab()">
+        </div>
+        <div class="field-block" style="margin-bottom:0;">
+          <select id="savedOrderSort" onchange="renderSavedOrdersTab()">
+            <option value="date_desc">최신순</option>
+            <option value="gross_desc">매출 높은순</option>
+            <option value="gross_asc">매출 낮은순</option>
+            <option value="profit_desc">순이익 높은순</option>
+            <option value="margin_asc">마진율 낮은순</option>
+          </select>
+        </div>
       </div>
       <div class="hint" style="margin-top:12px; margin-bottom:12px;" id="savedOrderListHint">지금까지 저장된 모든 주문이에요 (엑셀로 분석한 것 + 직접 입력한 것). 눌러서 수정하거나 삭제할 수 있어요.</div>
       <div id="bulkEditPanel" class="bulk-edit-panel" style="display:none;"></div>
@@ -2219,7 +2222,7 @@ function buildOrderFormFields(order){
   courierCostInput.value = o.courier_cost != null ? o.courier_cost : 0;
 
   const wrap = document.createElement('div');
-  wrap.className = 'order-form-fields';
+  wrap.className = 'compact-fields';
 
   const platformBlock = buildLabeledInput('판매처', platformSel);
   platformBlock.className = 'field-block';
