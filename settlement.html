@@ -500,7 +500,7 @@
       </details>
 
       <button class="secondary" style="margin-top:16px;" onclick="downloadSavedOrders()">엑셀 다운로드</button>
-      <div class="hint" style="text-align:center; margin-top:6px;">주문목록·주문자정보·정산요약·비용상세·원가·추가비용이 각각 다른 시트에 담겨요</div>
+      <div class="hint" style="text-align:center; margin-top:6px;">정산요약·비용상세·추가비용·주문자정보·주문목록·원가가 각각 다른 시트에 담겨요. 엑셀 앱에서 왼쪽 위 목록(☰) 아이콘을 누르면 다른 시트로 이동할 수 있어요</div>
     </div>
   </div>
 
@@ -2137,6 +2137,7 @@ function downloadSavedOrders(){
 
   const summaryAoa = [
     ['정산요약'],
+    ['다른 내용(비용상세·추가비용·주문자정보·주문상세)은 왼쪽 위 목록(☰) 아이콘을 눌러 시트를 바꾸면 볼 수 있어요.'],
     [],
     ['기간', period],
     ['총매출', totalGross],
@@ -2226,12 +2227,12 @@ function downloadSavedOrders(){
   expenseWs['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 30 }];
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, orderWs, '주문상세');
-  XLSX.utils.book_append_sheet(wb, buyerWs, '주문자정보');
   XLSX.utils.book_append_sheet(wb, summaryWs, '정산요약');
   XLSX.utils.book_append_sheet(wb, costDetailWs, '비용상세');
-  XLSX.utils.book_append_sheet(wb, costWs, '원가관리');
   XLSX.utils.book_append_sheet(wb, expenseWs, '추가비용');
+  XLSX.utils.book_append_sheet(wb, buyerWs, '주문자정보');
+  XLSX.utils.book_append_sheet(wb, orderWs, '주문상세');
+  XLSX.utils.book_append_sheet(wb, costWs, '원가관리');
 
   const today = new Date();
   const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}_${String(today.getHours()).padStart(2, '0')}${String(today.getMinutes()).padStart(2, '0')}${String(today.getSeconds()).padStart(2, '0')}`;
