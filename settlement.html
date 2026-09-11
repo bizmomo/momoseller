@@ -870,6 +870,30 @@ async function syncCostMapFromOrder(row){
   else costMap[key] = { unitCost, packagingCost, courierCost };
 }
 
+// when a saved order is deleted, forget that product's learned cost too - but
+// only once its LAST remaining order is gone, so deleting one of several
+// orders of the same product doesn't wipe the cost the others still rely on.
+async function cleanupOrphanedCosts(refs){
+  const seen = new Set();
+  for(const ref of refs){
+    const optionName = ref.optionName || '';
+    const key = costKey(ref.platform, ref.productName, optionName);
+    if(seen.has(key)) continue;
+    seen.add(key);
+
+    const { data: remaining } = await sb.from('settlement_orders').select('id')
+      .eq('user_id', currentUser.id).eq('platform', ref.platform)
+      .eq('product_name', ref.productName).eq('option_name', optionName);
+    if(remaining && remaining.length > 0) continue;
+
+    const { data: costRows } = await sb.from('product_costs').select('id')
+      .eq('user_id', currentUser.id).eq('platform', ref.platform)
+      .eq('product_name', ref.productName).eq('option_name', optionName);
+    if(costRows && costRows.length) await sb.from('product_costs').delete().eq('id', costRows[0].id);
+    delete costMap[key];
+  }
+}
+
 // ============ other expenses DB ============
 async function loadOtherExpenses(){
   const { data } = await sb.from('other_expenses').select('*').eq('user_id', currentUser.id).order('expense_date', { ascending: false });
@@ -2150,9 +2174,17 @@ async function submitBulkDelete(){
   if(ids.length === 0) return;
   if(!confirm(`선택한 ${ids.length}건을 삭제할까요? 되돌릴 수 없어요.`)) return;
 
+  const cache = window._savedOrdersCache || [];
   const results = await Promise.all(ids.map(id => sb.from('settlement_orders').delete().eq('id', id)));
   const failedCount = results.filter(r => r.error).length;
   if(failedCount > 0) alert(`${failedCount}건 삭제에 실패했어요. 다시 시도해주세요.`);
+
+  const deletedRefs = ids
+    .filter((id, i) => !results[i].error)
+    .map(id => cache.find(o => o.id === id))
+    .filter(Boolean)
+    .map(o => ({ platform: o.platform, productName: o.product_name, optionName: o.option_name }));
+  await cleanupOrphanedCosts(deletedRefs);
 
   selectMode = false;
   selectedOrderIds.clear();
@@ -2603,8 +2635,12 @@ async function saveSavedOrderEdit(id){
 
 async function deleteSavedOrder(id){
   if(!confirm('이 주문을 삭제할까요?')) return;
+  const existing = (window._savedOrdersCache || []).find(o => o.id === id);
   const { error } = await sb.from('settlement_orders').delete().eq('id', id);
-  if(!error) renderSavedOrdersTab();
+  if(!error){
+    if(existing) await cleanupOrphanedCosts([{ platform: existing.platform, productName: existing.product_name, optionName: existing.option_name }]);
+    renderSavedOrdersTab();
+  }
 }
 </script>
 </body>
