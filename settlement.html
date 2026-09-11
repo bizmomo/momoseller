@@ -625,7 +625,7 @@ function parseOneRow(row, platform, map, settings, rows, fileName){
     const productAmount = parseMoney(amount);
     const shippingAmount = parseMoney(getCol(row, map, ['배송비 합계']));
     const grossSales = productAmount + shippingAmount;
-    const quantity = Math.max(1, parseMoney(getCol(row, map, ['수량'])) || 1);
+    const quantity = Math.max(1, parseMoney(getCol(row, map, ['구매수(수량)', '수량'])) || 1);
 
     const commissionNames = ['매출연동 수수료', '매출연동 수수료 합계(C)', '매출연동 수수료 합계'];
     const pgFeeNames = ['네이버페이 주문관리 수수료', 'Npay 수수료(B)', 'Npay 수수료'];
