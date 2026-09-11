@@ -146,7 +146,7 @@
   }
   .sheet-panel{
     background:#FBF9F2; width:100%; max-width:640px; border-radius:16px 16px 0 0;
-    padding:8px 20px 24px; min-height:60vh; max-height:90vh; overflow-y:auto; box-sizing:border-box;
+    padding:8px 20px 24px; min-height:30vh; max-height:82vh; overflow-y:auto; box-sizing:border-box;
   }
   .sheet-handle{ width:36px; height:4px; background:var(--line); border-radius:2px; margin:6px auto 14px; }
   .sheet-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
@@ -178,12 +178,12 @@
     <div class="hint" style="margin-top:0;">엑셀 파일을 올리거나, 표를 복사해서 붙여넣거나, 직접 입력해서 정산 데이터를 등록할 수 있어요.</div>
 
     <div class="field-block" id="topStoreWrap">
-      <label for="topStoreSelect">상점 선택</label>
+      <label for="topStoreSelect">정산 그룹 선택</label>
       <select id="topStoreSelect" onchange="onTopStoreSelectChange()">
-        <option value="">상점 없이 추가</option>
-        <option value="__new__">+ 새 상점 추가</option>
+        <option value="">그룹 없이 저장</option>
+        <option value="__new__">+ 새 정산 그룹 만들기</option>
       </select>
-      <input type="text" id="topStoreNewInput" placeholder="새 상점 이름 입력" style="display:none; margin-top:8px;">
+      <input type="text" id="topStoreNewInput" placeholder="새 정산 그룹 이름 입력" style="display:none; margin-top:8px;">
     </div>
 
     <div class="input-method-row">
@@ -275,8 +275,8 @@
           <div class="filter-trigger-value" id="periodTriggerLabel">전체</div>
         </button>
         <button type="button" class="filter-trigger" onclick="openFilterSheet('store')">
-          <div class="filter-trigger-label">상점 선택</div>
-          <div class="filter-trigger-value" id="storeTriggerLabel">전체 상점</div>
+          <div class="filter-trigger-label">그룹 선택</div>
+          <div class="filter-trigger-value" id="storeTriggerLabel">전체</div>
         </button>
         <button type="button" class="filter-trigger" onclick="openFilterSheet('platform')">
           <div class="filter-trigger-label">스토어 선택</div>
@@ -422,7 +422,7 @@
 
     <div class="card" id="savedSummaryCard">
       <h2>정산 요약</h2>
-      <div class="hint" style="margin-top:0;" id="savedSummaryHint">지금 보고 있는 기간·상점 기준이에요.</div>
+      <div class="hint" style="margin-top:0;" id="savedSummaryHint">지금 보고 있는 기간·그룹 기준이에요.</div>
 
       <div class="summary-big">
         <div class="label">총 매출</div>
@@ -1439,7 +1439,7 @@ async function saveOrdersToDb(orders, storeSelection){
   lastSavedReportId = null;
   const resolved = await resolveReportId(storeSelection);
   if(resolved.error){
-    statusEl.textContent = '정산 제목 저장에 실패했어요. 다시 시도해주세요.';
+    statusEl.textContent = '정산 그룹 저장에 실패했어요. 다시 시도해주세요.';
     statusEl.className = 'status err';
     console.error('settlement_reports insert failed', resolved.error);
     return false;
@@ -1554,9 +1554,9 @@ function syncPeriodChipUI(){
   document.getElementById('customRangeWrap').style.display = periodFilter === 'custom' ? 'block' : 'none';
 }
 
-// 기간/상점/스토어 필터는 하나의 공유 바텀시트에 담겨서 트리거 버튼으로 열고 닫음.
+// 기간/그룹/스토어 필터는 하나의 공유 바텀시트에 담겨서 트리거 버튼으로 열고 닫음.
 // 세 페이지 다 시트 안에 실존하는 그대로의 기존 엘리먼트라 내부 로직은 그대로 재사용.
-const FILTER_SHEET_PAGES = { period: ['periodSheetPage', '기간 선택'], store: ['storeSheetPage', '상점 선택'], platform: ['platformSheetPage', '스토어 선택'] };
+const FILTER_SHEET_PAGES = { period: ['periodSheetPage', '기간 선택'], store: ['storeSheetPage', '그룹 선택'], platform: ['platformSheetPage', '스토어 선택'] };
 function openFilterSheet(type){
   const [pageId, title] = FILTER_SHEET_PAGES[type];
   document.getElementById('filterSheetTitle').textContent = title;
@@ -1570,7 +1570,7 @@ function updateFilterTriggerLabels(periodLabel){
   const periodNames = { all: '전체', today: '오늘', week: '1주', month1: '1달', year1: '1년', custom: '기간지정' };
   document.getElementById('periodTriggerLabel').textContent = periodFilter === 'custom' && periodLabel ? periodLabel : (periodNames[periodFilter] || '전체');
   const storeOpt = document.getElementById('storeFilterSelect').selectedOptions[0];
-  document.getElementById('storeTriggerLabel').textContent = storeOpt ? storeOpt.textContent : '전체 상점';
+  document.getElementById('storeTriggerLabel').textContent = storeOpt ? storeOpt.textContent : '전체';
   const platformNames = { all: '전체', coupang: '쿠팡', smartstore: '스마트스토어' };
   document.getElementById('platformTriggerLabel').textContent = platformNames[platformFilterValue] || '전체';
 }
@@ -1892,10 +1892,9 @@ async function refreshStoreOptions(){
 
   const filterSel = document.getElementById('storeFilterSelect');
   const prevFilterValue = storeFilterValue;
-  filterSel.innerHTML = '<option value="all">전체 상점</option>'
+  filterSel.innerHTML = '<option value="all">전체</option>'
     + savedReports.map(r => `<option value="${r.id}">${escapeHtml(r.title)}</option>`).join('')
-    + '<option value="__untitled__">제목 없음</option>'
-    + '<option value="__new__">+ 새 상점 추가</option>';
+    + '<option value="__untitled__">그룹 없음</option>';
   const stillValid = prevFilterValue === 'all' || prevFilterValue === '__untitled__' || savedReports.some(r => r.id === prevFilterValue);
   storeFilterValue = stillValid ? prevFilterValue : 'all';
   filterSel.value = storeFilterValue;
@@ -1903,9 +1902,9 @@ async function refreshStoreOptions(){
 
   const topSel = document.getElementById('topStoreSelect');
   const prevTopValue = topSel.value;
-  topSel.innerHTML = '<option value="">상점 없이 추가</option>'
+  topSel.innerHTML = '<option value="">그룹 없이 저장</option>'
     + savedReports.map(r => `<option value="${r.id}">${escapeHtml(r.title)}</option>`).join('')
-    + '<option value="__new__">+ 새 상점 추가</option>';
+    + '<option value="__new__">+ 새 정산 그룹 만들기</option>';
   if(prevTopValue === '__new__' || savedReports.some(r => r.id === prevTopValue)) topSel.value = prevTopValue;
 }
 
@@ -1924,9 +1923,9 @@ function resolveTopStoreSelection(){
   return { reportId: val, newTitle: null };
 }
 
-// resolves a { reportId, newTitle } store selection into a real report id -
+// resolves a { reportId, newTitle } group selection into a real report id -
 // reuses an existing id as-is, creates the report row now for a brand new
-// title, or returns null for "상점 없이 추가". shared by the excel/paste
+// title, or returns null for "그룹 없이 저장". shared by the excel/paste
 // analyze+save flow and the 직접 입력 flow so both create at most one report
 // row per typed name instead of duplicating this insert-if-new logic.
 async function resolveReportId(storeSelection){
@@ -1941,31 +1940,9 @@ async function resolveReportId(storeSelection){
   return { reportId: null };
 }
 
-async function addNewStoreFromOrdersTab(){
-  const name = prompt('새 상점 이름을 입력해주세요.');
-  if(!name || !name.trim()) return;
-  const { data: report, error } = await sb.from('settlement_reports')
-    .insert({ user_id: currentUser.id, title: name.trim() })
-    .select().single();
-  if(error || !report){
-    alert('상점 추가에 실패했어요. 다시 시도해주세요.');
-    return;
-  }
-  await refreshStoreOptions();
-  storeFilterValue = report.id;
-  document.getElementById('storeFilterSelect').value = storeFilterValue;
-  document.getElementById('deleteStoreBtn').style.display = 'inline-block';
-  renderSavedOrdersTab();
-}
-
 function applyStoreFilter(){
   const val = document.getElementById('storeFilterSelect').value;
   closeFilterSheet();
-  if(val === '__new__'){
-    document.getElementById('storeFilterSelect').value = storeFilterValue;
-    addNewStoreFromOrdersTab();
-    return;
-  }
   storeFilterValue = val;
   document.getElementById('deleteStoreBtn').style.display = (storeFilterValue !== 'all' && storeFilterValue !== '__untitled__') ? 'inline-block' : 'none';
   renderSavedOrdersTab();
@@ -1981,7 +1958,7 @@ function applyPlatformFilter(val){
 async function deleteCurrentStoreFilter(){
   if(storeFilterValue === 'all' || storeFilterValue === '__untitled__') return;
   const title = reportTitleById[storeFilterValue] || '';
-  if(!confirm(`"${title}" 정산 제목을 삭제할까요? 저장된 주문들은 삭제되지 않고 주문 목록에 그대로 남아요.`)) return;
+  if(!confirm(`"${title}" 정산 그룹을 삭제할까요? 저장된 주문들은 삭제되지 않고 주문 목록에 그대로 남아요.`)) return;
   await sb.from('settlement_orders').update({ report_id: null }).eq('report_id', storeFilterValue);
   await sb.from('settlement_reports').delete().eq('id', storeFilterValue);
   storeFilterValue = 'all';
@@ -2507,7 +2484,7 @@ async function submitNewSavedOrder(){
 
   const resolved = await resolveReportId(resolveTopStoreSelection());
   if(resolved.error){
-    statusEl.textContent = '상점 저장에 실패했어요. 다시 시도해주세요.';
+    statusEl.textContent = '정산 그룹 저장에 실패했어요. 다시 시도해주세요.';
     statusEl.style.color = 'var(--error)';
     return;
   }
