@@ -261,6 +261,14 @@
         </div>
         <button type="button" class="mini-btn" style="margin-top:8px;" onclick="addNewStoreFromOrdersTab()">+ 새 상점</button>
       </div>
+      <div class="field-block" id="platformFilterWrap" style="margin-top:16px; margin-bottom:0;">
+        <label>판매처</label>
+        <div class="period-chip-row">
+          <button type="button" class="period-chip active" data-platform="all" onclick="applyPlatformFilter('all')">전체</button>
+          <button type="button" class="period-chip" data-platform="coupang" onclick="applyPlatformFilter('coupang')">쿠팡</button>
+          <button type="button" class="period-chip" data-platform="smartstore" onclick="applyPlatformFilter('smartstore')">스마트스토어</button>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -413,6 +421,7 @@ let customRangeEnd = null;
 let rangeStartInput = null; // buildDateSelectInput proxies, set up once in init()
 let rangeEndInput = null;
 let storeFilterValue = 'all'; // 'all' | '__untitled__' | a settlement_reports.id
+let platformFilterValue = 'all'; // 'all' | 'coupang' | 'smartstore'
 let lastSavedReportId = null; // report just created by the most recent saveOrdersToDb call, if titled
 let savedReports = [];
 let reportTitleById = {};
@@ -1468,6 +1477,7 @@ function applyCustomOrdersRange(){
 
 async function goToSavedOrdersForAnalysis(){
   applyPeriodFilter('all');
+  applyPlatformFilter('all');
   await setPageTab('orders');
   if(lastSavedReportId){
     storeFilterValue = lastSavedReportId;
@@ -1507,6 +1517,8 @@ async function renderSavedOrdersTab(){
 
   if(storeFilterValue === '__untitled__') orders = orders.filter(o => !o.report_id);
   else if(storeFilterValue && storeFilterValue !== 'all') orders = orders.filter(o => o.report_id === storeFilterValue);
+
+  if(platformFilterValue !== 'all') orders = orders.filter(o => o.platform === platformFilterValue);
 
   const search = document.getElementById('savedOrderSearch').value.trim().toLowerCase();
   if(search) orders = orders.filter(o => o.product_name.toLowerCase().indexOf(search) !== -1);
@@ -1817,6 +1829,12 @@ async function addNewStoreFromOrdersTab(){
 function applyStoreFilter(){
   storeFilterValue = document.getElementById('storeFilterSelect').value;
   document.getElementById('deleteStoreBtn').style.display = (storeFilterValue !== 'all' && storeFilterValue !== '__untitled__') ? 'inline-block' : 'none';
+  renderSavedOrdersTab();
+}
+
+function applyPlatformFilter(val){
+  platformFilterValue = val;
+  document.querySelectorAll('#platformFilterWrap .period-chip[data-platform]').forEach(b => b.classList.toggle('active', b.dataset.platform === val));
   renderSavedOrdersTab();
 }
 
