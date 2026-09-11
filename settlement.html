@@ -500,7 +500,7 @@
       </details>
 
       <button class="secondary" style="margin-top:16px;" onclick="downloadSavedOrders()">엑셀 다운로드</button>
-      <div class="hint" style="text-align:center; margin-top:6px;">정산요약·비용상세·추가비용·주문자정보·주문목록·원가가 각각 다른 시트에 담겨요. 엑셀 앱에서 왼쪽 위 목록(☰) 아이콘을 누르면 다른 시트로 이동할 수 있어요</div>
+      <div class="hint" style="text-align:center; margin-top:6px;">정산요약·비용상세·추가비용·주문자정보·주문목록·원가가 한 시트 안에 순서대로 담겨요</div>
     </div>
   </div>
 
@@ -2135,27 +2135,31 @@ function downloadSavedOrders(){
   const dates = orders.map(o => o.order_date).filter(Boolean).sort();
   const period = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} ~ ${dates[dates.length - 1]}`) : '';
 
-  const summaryAoa = [
-    ['정산요약'],
-    ['다른 내용(비용상세·추가비용·주문자정보·주문상세)은 왼쪽 위 목록(☰) 아이콘을 눌러 시트를 바꾸면 볼 수 있어요.'],
-    [],
-    ['기간', period],
-    ['총매출', totalGross],
-    ['정산예정액', totalSettlement],
-    ['플랫폼수수료', -totalFees],
-    ['상품원가(포장비포함)', -totalProductCost],
-    ['택배비', -totalCourierCost],
-    ['광고비', -totalAdCost],
-    ['기타비용', -totalOtherCost],
-    ['순이익', totalNetProfit],
-    ['마진율(%)', Number(marginRate.toFixed(1))],
-  ];
-  const summaryWs = XLSX.utils.aoa_to_sheet(summaryAoa);
-  summaryWs['!cols'] = [{ wch: 20 }, { wch: 24 }];
+  // 시트를 여러 개로 나누면 모바일 엑셀 앱에서 목록(☰) 아이콘을 눌러야만
+  // 다른 시트가 보여서 "안 보인다"는 문의가 반복됐다. 그래서 정산요약부터
+  // 원가관리까지 전부 한 시트에 위→아래로 순서대로 쌓는다.
+  const sheetAoa = [];
+  function pushRow(row){ sheetAoa.push(row); return sheetAoa.length - 1; }
+  function pushBlank(n){ for(let i = 0; i < (n || 1); i++) sheetAoa.push([]); }
+  function pushSection(title){ pushRow([`■ ${title}`]); }
+
+  pushSection('정산요약');
+  pushRow(['기간', period]);
+  pushRow(['총매출', totalGross]);
+  pushRow(['정산예정액', totalSettlement]);
+  pushRow(['플랫폼수수료', -totalFees]);
+  pushRow(['상품원가(포장비포함)', -totalProductCost]);
+  pushRow(['택배비', -totalCourierCost]);
+  pushRow(['광고비', -totalAdCost]);
+  pushRow(['기타비용', -totalOtherCost]);
+  pushRow(['순이익', totalNetProfit]);
+  pushRow(['마진율(%)', Number(marginRate.toFixed(1))]);
+  pushBlank(2);
 
   // 비용상세: 정산요약 카드의 "비용상세" 아코디언과 똑같이 8개 카테고리를
   // 소계 + 건별 내역(날짜·내용·금액)으로 풀어서 보여준다.
-  const costDetailHeader = ['분류', '날짜', '내용', '금액'];
+  pushSection('비용상세');
+  pushRow(['분류', '날짜', '내용', '금액']);
   const costDetailSections = [
     ['판매 수수료', bd.marketFeeItems],
     ['배송 수수료', bd.shipFeeItems],
@@ -2166,27 +2170,38 @@ function downloadSavedOrders(){
     ['광고비', bd.adItems],
     ['기타 비용', bd.otherItems],
   ];
-  const costDetailAoa = [costDetailHeader];
   costDetailSections.forEach(([label, items]) => {
     const sectionTotal = items.reduce((s, i) => s + i.amt, 0);
-    costDetailAoa.push([label, '', `소계 (${items.length}건)`, -sectionTotal]);
-    items.forEach(i => costDetailAoa.push(['', i.date || '', i.name || '', -i.amt]));
+    pushRow([label, '', `소계 (${items.length}건)`, -sectionTotal]);
+    items.forEach(i => pushRow(['', i.date || '', i.name || '', -i.amt]));
   });
-  const costDetailWs = XLSX.utils.aoa_to_sheet(costDetailAoa);
-  costDetailWs['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 30 }, { wch: 14 }];
+  pushBlank(2);
+
+  // 화면의 "추가 비용" 카드 목록과 똑같이 지금 보고 있는 기간에 해당하는
+  // 것만 담는다 (전체 기간이면 range가 null이라 등록된 걸 전부 담음).
+  pushSection('추가비용');
+  pushRow(['날짜', '비용종류', '금액', '플랫폼', '메모']);
+  const range = getActivePeriodRange();
+  const periodExpenses = range ? otherExpenses.filter(e => e.expense_date >= range.start && e.expense_date <= range.end) : otherExpenses;
+  periodExpenses.forEach(e => pushRow([
+    e.expense_date, e.category, e.amount, e.platform ? (PLATFORM_LABELS[e.platform] || e.platform) : '전체 공통', e.memo || '',
+  ]));
+  pushBlank(2);
 
   // 주문자정보: 배송 확인용 - 엑셀에서 자동 인식했거나 구매자정보 바텀시트에서
   // 고친 값 그대로. 구매자정보가 없는 주문(직접입력 등)은 빈 칸으로 남긴다.
-  const buyerHeader = ['주문일', '상품명', '수취인이름', '연락처', '배송지', '배송메모', '배송완료'];
-  const buyerAoa = [buyerHeader].concat(orders.map(o => [
+  pushSection('주문자정보');
+  pushRow(['주문일', '상품명', '수취인이름', '연락처', '배송지', '배송메모', '배송완료']);
+  orders.forEach(o => pushRow([
     o.order_date || '', o.product_name, o.buyer_name || '', o.buyer_phone || '', o.buyer_address || '', o.delivery_memo || '', o.delivered ? 'Y' : 'N',
   ]));
-  const buyerWs = XLSX.utils.aoa_to_sheet(buyerAoa);
-  buyerWs['!autofilter'] = { ref: `A1:G${orders.length + 1}` };
-  buyerWs['!cols'] = [{ wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 16 }, { wch: 34 }, { wch: 24 }, { wch: 10 }];
+  pushBlank(2);
 
+  pushSection('주문상세');
   const orderHeader = ['주문일', '상품명', '판매처', '수량', '상품금액', '배송비', '총매출', '판매수수료', '배송수수료', '기타수수료', '정산액', '상품원가', '포장비', '택배비', '배분광고비', '배분기타비용', '순이익', '마진율(%)'];
-  const orderAoa = [orderHeader].concat(orders.map(o => [
+  pushRow(orderHeader);
+  const orderDataStartRow = sheetAoa.length;
+  orders.forEach(o => pushRow([
     o.order_date || '',
     o.product_name, PLATFORM_LABELS[o.platform] || o.platform, o.quantity,
     o.product_amount, o.shipping_amount, o.gross_sales,
@@ -2194,45 +2209,29 @@ function downloadSavedOrders(){
     -(o.product_cost || 0), -(o.packaging_cost || 0), -(o.courier_cost || 0), -(o.allocated_ad_cost || 0), -(o.allocated_other_cost || 0),
     o.net_profit, Number((o.margin_rate || 0).toFixed(1)),
   ]));
-  const orderWs = XLSX.utils.aoa_to_sheet(orderAoa);
-  const moneyCols = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-  for(let r = 1; r <= orders.length; r++){
-    moneyCols.forEach(c => {
-      const addr = XLSX.utils.encode_cell({ r, c });
-      if(orderWs[addr]) orderWs[addr].z = '#,##0';
-    });
-  }
-  orderWs['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(orderHeader.length - 1)}${orders.length + 1}` };
-  orderWs['!cols'] = orderHeader.map(() => ({ wch: 13 }));
-  orderWs['!cols'][1] = { wch: 30 };
+  pushBlank(2);
 
-  const costHeader = ['플랫폼', '상품명', '옵션명', '원가', '포장비', '택배비'];
-  const costAoa = [costHeader].concat(Object.keys(costMap).map(key => {
+  pushSection('원가관리');
+  pushRow(['플랫폼', '상품명', '옵션명', '원가', '포장비', '택배비']);
+  Object.keys(costMap).forEach(key => {
     const [platform, productName, optionName] = key.split('|');
     const c = costMap[key];
-    return [PLATFORM_LABELS[platform] || platform, productName, optionName || '', c.unitCost, c.packagingCost, c.courierCost];
-  }));
-  const costWs = XLSX.utils.aoa_to_sheet(costAoa);
-  costWs['!cols'] = [{ wch: 12 }, { wch: 30 }, { wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 10 }];
+    pushRow([PLATFORM_LABELS[platform] || platform, productName, optionName || '', c.unitCost, c.packagingCost, c.courierCost]);
+  });
 
-  // 화면의 "추가 비용" 카드 목록과 똑같이 지금 보고 있는 기간에 해당하는
-  // 것만 담는다 (전체 기간이면 range가 null이라 등록된 걸 전부 담음).
-  const range = getActivePeriodRange();
-  const periodExpenses = range ? otherExpenses.filter(e => e.expense_date >= range.start && e.expense_date <= range.end) : otherExpenses;
-  const expenseHeader = ['날짜', '비용종류', '금액', '플랫폼', '메모'];
-  const expenseAoa = [expenseHeader].concat(periodExpenses.map(e => [
-    e.expense_date, e.category, e.amount, e.platform ? (PLATFORM_LABELS[e.platform] || e.platform) : '전체 공통', e.memo || '',
-  ]));
-  const expenseWs = XLSX.utils.aoa_to_sheet(expenseAoa);
-  expenseWs['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 30 }];
+  const sheetWs = XLSX.utils.aoa_to_sheet(sheetAoa);
+  const orderMoneyCols = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+  for(let i = 0; i < orders.length; i++){
+    const r = orderDataStartRow + i;
+    orderMoneyCols.forEach(c => {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      if(sheetWs[addr]) sheetWs[addr].z = '#,##0';
+    });
+  }
+  sheetWs['!cols'] = Array.from({ length: 18 }, (_, i) => (i === 1 ? { wch: 30 } : { wch: 13 }));
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, summaryWs, '정산요약');
-  XLSX.utils.book_append_sheet(wb, costDetailWs, '비용상세');
-  XLSX.utils.book_append_sheet(wb, expenseWs, '추가비용');
-  XLSX.utils.book_append_sheet(wb, buyerWs, '주문자정보');
-  XLSX.utils.book_append_sheet(wb, orderWs, '주문상세');
-  XLSX.utils.book_append_sheet(wb, costWs, '원가관리');
+  XLSX.utils.book_append_sheet(wb, sheetWs, '정산내역');
 
   const today = new Date();
   const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}_${String(today.getHours()).padStart(2, '0')}${String(today.getMinutes()).padStart(2, '0')}${String(today.getSeconds()).padStart(2, '0')}`;
