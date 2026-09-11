@@ -118,6 +118,9 @@
   .period-chip-row{ display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
   .period-chip{ flex-shrink:0; white-space:nowrap; padding:6px 10px; font-size:12.5px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:14px; cursor:pointer; }
   .period-chip.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
+  /* iOS Safari renders input[type=date]'s native control wider than the box regardless of
+     CSS width/min-width - shrinking font-size/padding is the only lever that actually helps */
+  #rangeStartDate, #rangeEndDate, #expDate{ font-size:13px; padding:8px 8px; }
 </style>
 </head>
 <body>
