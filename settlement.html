@@ -748,23 +748,41 @@ async function loadCostMap(){
 // uploads of the same product auto-fill the cost without a separate
 // registration UI - the per-order fields store a TOTAL for that order, so
 // this divides by quantity to get back to costMap's per-unit rate.
+//
+// Looks up the existing row and does an explicit update-or-insert instead of
+// .upsert(...,{onConflict}) - onConflict silently fails (or errors, unnoticed
+// since this runs fire-and-forget) unless the table actually has a matching
+// unique constraint in the real database, which a mock/test double won't
+// catch. This way a fix always lands regardless of whether that constraint
+// exists, so a manually-corrected cost can't quietly get lost.
 async function syncCostMapFromOrder(row){
   const qty = row.quantity || 1;
   const unitCost = (row.product_cost || 0) / qty;
   const packagingCost = (row.packaging_cost || 0) / qty;
   const courierCost = (row.courier_cost || 0) / qty;
   const key = costKey(row.platform, row.product_name, row.option_name);
-  const { error } = await sb.from('product_costs').upsert({
+  const optionName = row.option_name || '';
+  const payload = {
     user_id: currentUser.id,
     platform: row.platform,
     product_name: row.product_name,
-    option_name: row.option_name || '',
+    option_name: optionName,
     unit_cost: unitCost,
     packaging_cost: packagingCost,
     courier_cost: courierCost,
     updated_at: new Date().toISOString(),
-  }, { onConflict: 'user_id,platform,product_name,option_name' });
-  if(!error) costMap[key] = { unitCost, packagingCost, courierCost };
+  };
+  const { data: existing, error: findError } = await sb.from('product_costs').select('id')
+    .eq('user_id', currentUser.id).eq('platform', row.platform)
+    .eq('product_name', row.product_name).eq('option_name', optionName)
+    .maybeSingle();
+  let error = findError;
+  if(!error){
+    if(existing) ({ error } = await sb.from('product_costs').update(payload).eq('id', existing.id));
+    else ({ error } = await sb.from('product_costs').insert(payload));
+  }
+  if(error) console.error('원가 학습 저장 실패:', error);
+  else costMap[key] = { unitCost, packagingCost, courierCost };
 }
 
 // ============ other expenses DB ============
