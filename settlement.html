@@ -44,6 +44,7 @@
   .platform-logo.coupang{ background:var(--error); }
   .platform-logo.smartstore{ background:var(--teal); }
   .platform-logo.unknown{ background:var(--ink-soft); }
+  .platform-logo.manual{ background:#2F6FED; }
   .file-row{ border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-top:10px; background:#fff; }
   .file-row.selected{ border-color:var(--teal); background:#F3F8F7; }
   .file-row-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
@@ -1060,13 +1061,18 @@ async function deleteExpense(id){
   renderSavedSummary(window._savedOrdersCache || []);
 }
 
+// 지금 보고 있는 기간에 해당하는 것만 보여준다 (카드 안내문구와 실제 동작을
+// 맞춤) - 예전엔 기간 필터와 무관하게 등록된 비용을 전부 다 보여줘서, 기간을
+// 좁혀 주문이 0건인 화면에서도 다른 달 비용이 그대로 남아있는 것처럼 보였다.
 function renderExpenseList(){
   const listEl = document.getElementById('expenseList');
-  if(otherExpenses.length === 0){
+  const range = getActivePeriodRange();
+  const visible = range ? otherExpenses.filter(e => e.expense_date >= range.start && e.expense_date <= range.end) : otherExpenses;
+  if(visible.length === 0){
     listEl.innerHTML = '<div class="hint" style="margin-top:0;">등록된 비용이 없어요.</div>';
     return;
   }
-  listEl.innerHTML = otherExpenses.map(e => `
+  listEl.innerHTML = visible.map(e => `
     <div class="cost-row">
       <span>${escapeHtml(e.expense_date)} · ${escapeHtml(e.category)}${e.platform ? ' · ' + PLATFORM_LABELS[e.platform] : ''}${e.memo ? ' · ' + escapeHtml(e.memo) : ''}</span>
       <span class="amt-neg" style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
@@ -1683,6 +1689,17 @@ function computePeriodRange(key){
   return null;
 }
 
+// 지금 선택된 기간 필터(오늘/1주/1달/1년/기간지정/전체)를 { start, end } 범위로
+// 계산 - "전체"거나 기간지정인데 아직 날짜를 안 골랐으면 null(무제한). 추가비용
+// 목록과 정산요약이 똑같은 이 범위를 써야 "지금 보고 있는 기간"이 실제로 일치한다.
+function getActivePeriodRange(){
+  if(periodFilter === 'custom'){
+    return (customRangeStart && customRangeEnd) ? { start: customRangeStart, end: customRangeEnd } : null;
+  }
+  if(periodFilter !== 'all') return computePeriodRange(periodFilter);
+  return null;
+}
+
 function syncPeriodChipUI(){
   document.querySelectorAll('.period-chip[data-period]').forEach(b => b.classList.toggle('active', b.dataset.period === periodFilter));
   document.getElementById('customRangeWrap').style.display = periodFilter === 'custom' ? 'block' : 'none';
@@ -1944,6 +1961,7 @@ async function renderSavedOrdersTab(){
 
   renderBulkEditPanel();
   renderSavedSummary(orders);
+  renderExpenseList();
 }
 
 function closeGroupFolder(){
@@ -1989,12 +2007,7 @@ function renderSavedSummary(orders){
   // NOT derived from the visible orders' own dates. An expense (e.g. today's ad spend) must
   // count whenever it falls in the selected period even if no order happens to land on that
   // exact date, and "전체" has to mean genuinely unbounded rather than "span of orders shown".
-  let range = null;
-  if(periodFilter === 'custom'){
-    if(customRangeStart && customRangeEnd) range = { start: customRangeStart, end: customRangeEnd };
-  } else if(periodFilter !== 'all'){
-    range = computePeriodRange(periodFilter);
-  }
+  const range = getActivePeriodRange();
 
   const adItems = [], otherItems = [];
   otherExpenses.forEach(e => {
@@ -2235,8 +2248,12 @@ async function deleteCurrentStoreFilter(){
 function savedOrderSummaryHtml(o){
   const storeTitle = o.report_id ? reportTitleById[o.report_id] : null;
   const platformClass = o.platform === 'coupang' ? 'platform-coupang' : o.platform === 'smartstore' ? 'platform-smartstore' : '';
-  const logoClass = o.platform === 'coupang' ? 'coupang' : o.platform === 'smartstore' ? 'smartstore' : 'unknown';
-  const logoChar = o.platform === 'coupang' ? 'C' : o.platform === 'smartstore' ? 'N' : '?';
+  const logoClass = o.platform === 'coupang' ? 'coupang' : o.platform === 'smartstore' ? 'smartstore' : o.platform === 'manual' ? 'manual' : 'unknown';
+  // 직접입력 주문은 플랫폼이 없어서 물음표(미확인)로 보이던 걸, 연필 아이콘으로
+  // 바꿔서 "확인 안 된 데이터"가 아니라 "직접 입력한 데이터"라는 걸 명확히 한다.
+  const logoChar = o.platform === 'coupang' ? 'C' : o.platform === 'smartstore' ? 'N'
+    : o.platform === 'manual' ? '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>'
+    : '?';
   const totalFee = (o.marketplace_fee || 0) + (o.shipping_fee || 0) + (o.other_platform_fee || 0);
   const isNew = recentlyAddedOrderKeys.has(savedOrderNaturalKey(o));
   return `
