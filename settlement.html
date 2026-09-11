@@ -249,17 +249,15 @@
 
   <div id="ordersTab" style="display:none;">
     <div class="card compact-card compact-fields">
-      <div style="display:flex; gap:6px; align-items:stretch;">
-        <div class="period-chip-row" id="periodChipRow" style="flex:1; min-width:0;">
-          <button type="button" class="period-chip active" data-period="all" onclick="applyPeriodFilter('all')">전체</button>
-          <button type="button" class="period-chip" data-period="today" onclick="applyPeriodFilter('today')">오늘</button>
-          <button type="button" class="period-chip" data-period="yesterday" onclick="applyPeriodFilter('yesterday')">어제</button>
-          <button type="button" class="period-chip" data-period="week" onclick="applyPeriodFilter('week')">1주</button>
-          <button type="button" class="period-chip" data-period="month1" onclick="applyPeriodFilter('month1')">1달</button>
-          <button type="button" class="period-chip" data-period="month6" onclick="applyPeriodFilter('month6')">6달</button>
-          <button type="button" class="period-chip" data-period="year1" onclick="applyPeriodFilter('year1')">1년</button>
-        </div>
-        <button type="button" class="period-chip" data-period="custom" onclick="applyPeriodFilter('custom')" style="flex-shrink:0;">📅 기간지정</button>
+      <div class="period-chip-row" id="periodChipRow">
+        <button type="button" class="period-chip active" data-period="all" onclick="applyPeriodFilter('all')">전체</button>
+        <button type="button" class="period-chip" data-period="today" onclick="applyPeriodFilter('today')">오늘</button>
+        <button type="button" class="period-chip" data-period="yesterday" onclick="applyPeriodFilter('yesterday')">어제</button>
+        <button type="button" class="period-chip" data-period="week" onclick="applyPeriodFilter('week')">1주</button>
+        <button type="button" class="period-chip" data-period="month1" onclick="applyPeriodFilter('month1')">1달</button>
+        <button type="button" class="period-chip" data-period="month6" onclick="applyPeriodFilter('month6')">6달</button>
+        <button type="button" class="period-chip" data-period="year1" onclick="applyPeriodFilter('year1')">1년</button>
+        <button type="button" class="period-chip" data-period="custom" onclick="applyPeriodFilter('custom')">기간지정</button>
       </div>
       <div class="hint" id="savedOrdersPeriodLabel" style="margin-top:8px; margin-bottom:0; display:none;"></div>
       <div id="customRangeWrap" style="display:none; margin-top:12px;">
@@ -268,7 +266,7 @@
             <label for="rangeStartDate">시작일</label>
             <div class="date-input-wrap">
               <div class="date-display" id="rangeStartDateDisplay">날짜 선택</div>
-              <input type="date" id="rangeStartDate" oninput="syncDateDisplay('rangeStartDate')">
+              <input type="date" id="rangeStartDate" oninput="syncDateDisplay('rangeStartDate'); applyCustomOrdersRange();">
             </div>
           </div>
           <span style="padding-bottom:9px; color:var(--ink-soft);">~</span>
@@ -276,11 +274,10 @@
             <label for="rangeEndDate">종료일</label>
             <div class="date-input-wrap">
               <div class="date-display" id="rangeEndDateDisplay">날짜 선택</div>
-              <input type="date" id="rangeEndDate" oninput="syncDateDisplay('rangeEndDate')">
+              <input type="date" id="rangeEndDate" oninput="syncDateDisplay('rangeEndDate'); applyCustomOrdersRange();">
             </div>
           </div>
         </div>
-        <button class="secondary" style="margin-top:8px;" onclick="applyCustomOrdersRange()">이 기간으로 보기</button>
       </div>
       <div class="field-block" id="storeFilterWrap" style="margin-top:16px; margin-bottom:0;">
         <div style="display:flex; align-items:center; gap:8px;">
