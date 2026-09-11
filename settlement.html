@@ -248,10 +248,13 @@
       </div>
       <div class="hint" id="savedOrdersPeriodLabel" style="margin-top:8px; margin-bottom:0; display:none;"></div>
       <div id="customRangeWrap" style="display:none; margin-top:12px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <div id="rangeStartWrap" style="flex:1; min-width:0;"></div>
-          <span>~</span>
-          <div id="rangeEndWrap" style="flex:1; min-width:0;"></div>
+        <div class="field-block">
+          <label for="rangeStartDate">시작일</label>
+          <input type="date" id="rangeStartDate">
+        </div>
+        <div class="field-block" style="margin-bottom:0;">
+          <label for="rangeEndDate">종료일</label>
+          <input type="date" id="rangeEndDate">
         </div>
         <button class="secondary" style="margin-top:8px;" onclick="applyCustomOrdersRange()">이 기간으로 보기</button>
       </div>
@@ -303,15 +306,13 @@
       <div id="expenseList"></div>
       <button type="button" class="mini-btn" onclick="toggleExpenseForm()">+ 비용 추가</button>
       <div id="expenseForm" style="display:none; margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
-        <div class="row" style="margin-bottom:10px;">
-          <div>
-            <label>날짜</label>
-            <div id="expDateWrap"></div>
-          </div>
-          <div>
-            <label for="expAmount">금액</label>
-            <input type="number" id="expAmount" placeholder="예) 100000">
-          </div>
+        <div class="field-block">
+          <label for="expDate">날짜</label>
+          <input type="date" id="expDate">
+        </div>
+        <div class="field-block">
+          <label for="expAmount">금액</label>
+          <input type="number" id="expAmount" placeholder="예) 100000">
         </div>
         <div class="field-block">
           <label for="expCategory">비용 종류</label>
@@ -402,10 +403,8 @@ async function init(){
 function setupOrdersRangePickers(){
   const today = new Date();
   const { start } = monthRangeISO(today.getFullYear(), today.getMonth() + 1);
-  rangeStartInput = buildDateSelectInput(start);
-  rangeEndInput = buildDateSelectInput(formatDateISO(today));
-  document.getElementById('rangeStartWrap').appendChild(rangeStartInput.wrapEl);
-  document.getElementById('rangeEndWrap').appendChild(rangeEndInput.wrapEl);
+  document.getElementById('rangeStartDate').value = start;
+  document.getElementById('rangeEndDate').value = formatDateISO(today);
 }
 
 // ============ state ============
@@ -417,9 +416,6 @@ let otherExpenses = [];   // rows from other_expenses for the current user
 let periodFilter = 'all'; // 'all' | 'today' | 'yesterday' | 'week' | 'month1' | 'month6' | 'year1' | 'custom'
 let customRangeStart = null; // set when 'custom' period is applied
 let customRangeEnd = null;
-let rangeStartInput = null; // buildDateSelectInput proxies, set up once in init()
-let rangeEndInput = null;
-let expDateInput = null; // buildDateSelectInput proxy, rebuilt each time the 추가 비용 form opens
 let storeFilterValue = 'all'; // 'all' | '__untitled__' | a settlement_reports.id
 let platformFilterValue = 'all'; // 'all' | 'coupang' | 'smartstore'
 let lastSavedReportId = null; // report just created by the most recent saveOrdersToDb call, if titled
@@ -795,16 +791,11 @@ function toggleExpenseForm(){
   const form = document.getElementById('expenseForm');
   const willShow = form.style.display === 'none';
   form.style.display = willShow ? 'block' : 'none';
-  if(willShow){
-    const wrap = document.getElementById('expDateWrap');
-    wrap.innerHTML = '';
-    expDateInput = buildDateSelectInput(new Date().toISOString().slice(0, 10));
-    wrap.appendChild(expDateInput.wrapEl);
-  }
+  if(willShow) document.getElementById('expDate').value = new Date().toISOString().slice(0, 10);
 }
 
 async function saveExpense(){
-  const dateVal = expDateInput ? expDateInput.value : '';
+  const dateVal = document.getElementById('expDate').value;
   const amount = Number(document.getElementById('expAmount').value);
   const category = document.getElementById('expCategory').value;
   const platform = document.getElementById('expPlatform').value || null;
@@ -1478,16 +1469,16 @@ function applyPeriodFilter(key){
   if(key !== 'custom'){
     customRangeStart = null; customRangeEnd = null;
   } else if(!customRangeStart || !customRangeEnd){
-    customRangeStart = rangeStartInput.value;
-    customRangeEnd = rangeEndInput.value;
+    customRangeStart = document.getElementById('rangeStartDate').value;
+    customRangeEnd = document.getElementById('rangeEndDate').value;
   }
   syncPeriodChipUI();
   renderSavedOrdersTab();
 }
 
 function applyCustomOrdersRange(){
-  const start = rangeStartInput.value;
-  const end = rangeEndInput.value;
+  const start = document.getElementById('rangeStartDate').value;
+  const end = document.getElementById('rangeEndDate').value;
   if(!start || !end) return;
   if(start > end){
     alert('시작일이 종료일보다 늦을 수 없어요.');
