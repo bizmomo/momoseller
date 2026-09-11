@@ -502,6 +502,7 @@ const ORDER_DRAFT_KEY = 'momoseller_order_draft';
 
 let selectMode = false;
 let selectedOrderIds = new Set();
+let bulkSelectedField = null;
 const BULK_EDIT_FIELDS = [
   { key: 'product_amount', label: '상품금액' },
   { key: 'shipping_amount', label: '배송비 받은 금액' },
@@ -2062,23 +2063,22 @@ function renderBulkEditPanel(){
     return;
   }
 
+  if(!bulkSelectedField) bulkSelectedField = BULK_EDIT_FIELDS[0].key;
+
   const groupOptions = '<option value="__untitled__">그룹 없음</option>'
     + savedReports.map(r => `<option value="${r.id}">${escapeHtml(r.title)}</option>`).join('');
 
   panel.innerHTML = `
-    <div class="hint" style="margin-top:0;">체크한 항목만 선택한 ${count}건 전체에 같은 값으로 한번에 반영돼요.</div>
+    <div class="hint" style="margin-top:0;">정산 그룹을 바꾸거나, 아래에서 항목을 고르고 값을 입력하면 선택한 ${count}건 전체에 반영돼요.</div>
     <div class="bulk-field-row">
       <input type="checkbox" id="bulkApply-report_id">
       <label for="bulkApply-report_id">정산 그룹</label>
       <select id="bulkValue-report_id">${groupOptions}</select>
     </div>
-    ${BULK_EDIT_FIELDS.map(f => `
-      <div class="bulk-field-row">
-        <input type="checkbox" id="bulkApply-${f.key}">
-        <label for="bulkApply-${f.key}">${f.label}</label>
-        <input type="number" id="bulkValue-${f.key}" placeholder="새 값" min="0">
-      </div>
-    `).join('')}
+    <div class="period-chip-row" id="bulkFieldChipRow" style="margin-top:10px;">
+      ${BULK_EDIT_FIELDS.map(f => `<button type="button" class="period-chip${f.key === bulkSelectedField ? ' active' : ''}" data-bulk-field="${f.key}" onclick="selectBulkField('${f.key}')">${f.label}</button>`).join('')}
+    </div>
+    <input type="number" id="bulkFieldValue" placeholder="새 값" min="0" style="margin-top:8px;">
     <div class="hint" id="bulkEditStatus" style="margin-top:8px;"></div>
     <div style="display:flex; gap:8px; margin-top:10px;">
       <button type="button" class="primary" onclick="submitBulkEdit()">일괄 저장 (${count}건)</button>
@@ -2088,26 +2088,36 @@ function renderBulkEditPanel(){
   panel.style.display = 'block';
 }
 
+function selectBulkField(key){
+  bulkSelectedField = key;
+  document.querySelectorAll('#bulkFieldChipRow .period-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.bulkField === key);
+  });
+  const valueInput = document.getElementById('bulkFieldValue');
+  if(valueInput) valueInput.value = '';
+}
+
 async function submitBulkEdit(){
   const statusEl = document.getElementById('bulkEditStatus');
   const groupChecked = document.getElementById('bulkApply-report_id').checked;
-  const changes = BULK_EDIT_FIELDS.filter(f => document.getElementById(`bulkApply-${f.key}`).checked);
-  if(changes.length === 0 && !groupChecked){
-    statusEl.textContent = '변경할 항목을 체크해주세요.';
+  const fieldValueRaw = document.getElementById('bulkFieldValue').value;
+  const hasFieldValue = fieldValueRaw !== '';
+  if(!hasFieldValue && !groupChecked){
+    statusEl.textContent = '변경할 항목을 체크하거나 값을 입력해주세요.';
     statusEl.style.color = 'var(--error)';
     return;
   }
 
   const values = {};
-  for(const f of changes){
-    const raw = document.getElementById(`bulkValue-${f.key}`).value;
-    const n = Number(raw);
-    if(raw === '' || isNaN(n) || n < 0){
+  if(hasFieldValue){
+    const n = Number(fieldValueRaw);
+    if(isNaN(n) || n < 0){
+      const f = BULK_EDIT_FIELDS.find(f => f.key === bulkSelectedField);
       statusEl.textContent = `${f.label}에 넣을 값을 입력해주세요.`;
       statusEl.style.color = 'var(--error)';
       return;
     }
-    values[f.key] = n;
+    values[bulkSelectedField] = n;
   }
   const newReportId = groupChecked
     ? (document.getElementById('bulkValue-report_id').value === '__untitled__' ? null : document.getElementById('bulkValue-report_id').value)
@@ -2155,7 +2165,7 @@ async function submitBulkEdit(){
     return;
   }
 
-  if(changes.some(f => f.key === 'product_cost' || f.key === 'packaging_cost' || f.key === 'courier_cost')){
+  if(hasFieldValue && (bulkSelectedField === 'product_cost' || bulkSelectedField === 'packaging_cost' || bulkSelectedField === 'courier_cost')){
     updates.forEach(u => {
       const existing = cache.find(o => o.id === u.id);
       if(existing) syncCostMapFromOrder(Object.assign({}, existing, u));
@@ -2164,6 +2174,7 @@ async function submitBulkEdit(){
 
   selectMode = false;
   selectedOrderIds.clear();
+  bulkSelectedField = null;
   document.getElementById('selectModeBtn').textContent = '선택';
   document.getElementById('selectModeBtn').classList.remove('active');
   document.getElementById('selectAllBtn').style.display = 'none';
