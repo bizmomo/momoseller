@@ -64,6 +64,9 @@
   .tab-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
   .order-card{ border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:8px; background:#fff; cursor:pointer; }
   .order-card.selected{ border-color:var(--teal); background:#F3F8F7; }
+  .group-folder-card{ display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:8px; background:#FAF8F1; cursor:pointer; }
+  .group-folder-card .group-folder-name{ font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .group-folder-card .group-folder-count{ font-size:12.5px; color:var(--ink-soft); flex-shrink:0; }
   .date-select-group{ display:flex; gap:6px; }
   .date-select-group select{ flex:1; min-width:0; width:auto; }
   .mini-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); }
@@ -1635,6 +1638,26 @@ async function fetchAllSavedOrders(){
   return data || [];
 }
 
+function orderCardHtml(o){
+  return `
+    <div class="order-card${selectedOrderIds.has(o.id) ? ' selected' : ''}">
+      <div id="savedOrderSummary-${o.id}" onclick="${selectMode ? `toggleOrderSelect('${o.id}')` : `toggleSavedOrderEdit('${o.id}')`}" style="display:flex; align-items:flex-start; gap:10px;">
+        ${selectMode ? `<input type="checkbox" class="order-select-checkbox" data-id="${o.id}" style="pointer-events:none; margin-top:3px;" ${selectedOrderIds.has(o.id) ? 'checked' : ''}>` : ''}
+        <div id="savedOrderSummaryInner-${o.id}" style="flex:1; min-width:0;">${savedOrderSummaryHtml(o)}</div>
+      </div>
+      <div id="savedOrderEdit-${o.id}" style="display:none;"></div>
+    </div>
+  `;
+}
+
+function openGroupFolder(groupId){
+  storeFilterValue = groupId;
+  const sel = document.getElementById('storeFilterSelect');
+  if(sel) sel.value = groupId;
+  document.getElementById('deleteStoreBtn').style.display = 'inline-block';
+  renderSavedOrdersTab();
+}
+
 async function renderSavedOrdersTab(){
   let orders;
   let periodLabel = '';
@@ -1685,15 +1708,31 @@ async function renderSavedOrdersTab(){
   emptyNote.style.display = orders.length === 0 ? 'block' : 'none';
   emptyNote.textContent = search ? '검색 결과가 없어요.' : periodFilter === 'all' ? '저장된 주문이 아직 없어요.' : '이 기간에는 저장된 주문이 없어요.';
 
-  document.getElementById('savedOrderListWrap').innerHTML = orders.map(o => `
-    <div class="order-card${selectedOrderIds.has(o.id) ? ' selected' : ''}">
-      <div id="savedOrderSummary-${o.id}" onclick="${selectMode ? `toggleOrderSelect('${o.id}')` : `toggleSavedOrderEdit('${o.id}')`}" style="display:flex; align-items:flex-start; gap:10px;">
-        ${selectMode ? `<input type="checkbox" class="order-select-checkbox" data-id="${o.id}" style="pointer-events:none; margin-top:3px;" ${selectedOrderIds.has(o.id) ? 'checked' : ''}>` : ''}
-        <div id="savedOrderSummaryInner-${o.id}" style="flex:1; min-width:0;">${savedOrderSummaryHtml(o)}</div>
+  // 전체 보기(storeFilterValue==='all')일 때는 그룹별 주문을 폴더 카드 하나로
+  // 접어두고, 그룹 없는 주문만 바로 펼쳐서 보여준다 - 선택 모드에서는 그룹에
+  // 속한 주문도 체크해서 일괄 처리할 수 있어야 하니 폴더 뷰를 건너뛴다.
+  if(storeFilterValue === 'all' && !selectMode){
+    const grouped = {};
+    const groupOrder = [];
+    const ungrouped = [];
+    orders.forEach(o => {
+      if(o.report_id){
+        if(!grouped[o.report_id]){ grouped[o.report_id] = []; groupOrder.push(o.report_id); }
+        grouped[o.report_id].push(o);
+      } else {
+        ungrouped.push(o);
+      }
+    });
+    const folderHtml = groupOrder.map(id => `
+      <div class="group-folder-card" onclick="openGroupFolder('${id}')">
+        <span class="group-folder-name">📁 ${escapeHtml(reportTitleById[id] || '(이름 없음)')}</span>
+        <span class="group-folder-count">${grouped[id].length}건 ›</span>
       </div>
-      <div id="savedOrderEdit-${o.id}" style="display:none;"></div>
-    </div>
-  `).join('');
+    `).join('');
+    document.getElementById('savedOrderListWrap').innerHTML = folderHtml + ungrouped.map(orderCardHtml).join('');
+  } else {
+    document.getElementById('savedOrderListWrap').innerHTML = orders.map(orderCardHtml).join('');
+  }
 
   const selectAllBtn = document.getElementById('selectAllBtn');
   if(selectMode && orders.length > 0){
