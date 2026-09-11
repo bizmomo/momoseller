@@ -500,7 +500,7 @@
       </details>
 
       <button class="secondary" style="margin-top:16px;" onclick="downloadSavedOrders()">엑셀 다운로드</button>
-      <div class="hint" style="text-align:center; margin-top:6px;">주문목록·정산요약·원가·추가비용이 각각 다른 시트에 담겨요</div>
+      <div class="hint" style="text-align:center; margin-top:6px;">주문목록·주문자정보·정산요약·비용상세·원가·추가비용이 각각 다른 시트에 담겨요</div>
     </div>
   </div>
 
@@ -2020,13 +2020,17 @@ function closeGroupFolder(){
 // stored allocated_ad_cost/allocated_other_cost - so newly added/edited
 // 추가비용 entries are reflected immediately without needing to re-save
 // every order they apply to.
-function renderSavedSummary(orders){
-  const totalGross = orders.reduce((s, o) => s + (o.gross_sales || 0), 0);
-  const totalSettlement = orders.reduce((s, o) => s + (o.settlement_amount || 0), 0);
-
-  // per-row breakdown (which orders, how much each) so an anomalous total - one order
-  // with a wildly wrong registered cost, say - can actually be found and not just seen
-  // as an odd aggregate number.
+// orders의 판매수수료/배송수수료/기타플랫폼수수료/상품원가/포장비/택배비와, 지금
+// 선택된 기간에 걸리는 otherExpenses(광고비/기타비용)를 8개 카테고리로 나눠서
+// 건별 내역(날짜·이름·금액)과 카테고리별 합계를 계산한다 - 정산요약 카드의
+// "비용상세" 아코디언과 엑셀 다운로드의 "비용상세" 시트가 이 계산을 공유해서
+// 화면과 엑셀의 숫자가 항상 같은 기준으로 일치한다.
+//
+// same period window the order list itself is filtered by (오늘/어제/.../전체/기간지정) -
+// NOT derived from the visible orders' own dates. An expense (e.g. today's ad spend) must
+// count whenever it falls in the selected period even if no order happens to land on that
+// exact date, and "전체" has to mean genuinely unbounded rather than "span of orders shown".
+function computeCostBreakdown(orders){
   const fieldItems = (getter) => orders.filter(o => getter(o)).map(o => ({ date: o.order_date, name: o.product_name, amt: getter(o) }));
   const sum = (items) => items.reduce((s, i) => s + i.amt, 0);
 
@@ -2037,20 +2041,7 @@ function renderSavedSummary(orders){
   const packagingCostItems = fieldItems(o => o.packaging_cost);
   const courierCostItems = fieldItems(o => o.courier_cost);
 
-  const totalMarketFee = sum(marketFeeItems);
-  const totalShipFee = sum(shipFeeItems);
-  const totalOtherFee = sum(otherFeeItems);
-  const totalFees = totalMarketFee + totalShipFee + totalOtherFee;
-  const totalProductCost = sum(productCostItems);
-  const totalPackagingCost = sum(packagingCostItems);
-  const totalCourierCost = sum(courierCostItems);
-
-  // same period window the order list itself is filtered by (오늘/어제/.../전체/기간지정) -
-  // NOT derived from the visible orders' own dates. An expense (e.g. today's ad spend) must
-  // count whenever it falls in the selected period even if no order happens to land on that
-  // exact date, and "전체" has to mean genuinely unbounded rather than "span of orders shown".
   const range = getActivePeriodRange();
-
   const adItems = [], otherItems = [];
   otherExpenses.forEach(e => {
     if(range && (e.expense_date < range.start || e.expense_date > range.end)) return;
@@ -2058,10 +2049,22 @@ function renderSavedSummary(orders){
     const item = { date: e.expense_date, name: label, amt: Math.abs(e.amount) };
     if(e.category === '광고비') adItems.push(item); else otherItems.push(item);
   });
-  const totalAdExpense = sum(adItems);
-  const totalOtherExpense = sum(otherItems);
 
-  const totalCostsAndExpense = totalProductCost + totalPackagingCost + totalCourierCost + totalAdExpense + totalOtherExpense;
+  return {
+    marketFeeItems, shipFeeItems, otherFeeItems, productCostItems, packagingCostItems, courierCostItems, adItems, otherItems,
+    totalMarketFee: sum(marketFeeItems), totalShipFee: sum(shipFeeItems), totalOtherFee: sum(otherFeeItems),
+    totalProductCost: sum(productCostItems), totalPackagingCost: sum(packagingCostItems), totalCourierCost: sum(courierCostItems),
+    totalAdExpense: sum(adItems), totalOtherExpense: sum(otherItems),
+  };
+}
+
+function renderSavedSummary(orders){
+  const totalGross = orders.reduce((s, o) => s + (o.gross_sales || 0), 0);
+  const totalSettlement = orders.reduce((s, o) => s + (o.settlement_amount || 0), 0);
+
+  const bd = computeCostBreakdown(orders);
+  const totalFees = bd.totalMarketFee + bd.totalShipFee + bd.totalOtherFee;
+  const totalCostsAndExpense = bd.totalProductCost + bd.totalPackagingCost + bd.totalCourierCost + bd.totalAdExpense + bd.totalOtherExpense;
   const netProfit = totalSettlement - totalCostsAndExpense;
   const marginRate = totalGross > 0 ? (netProfit / totalGross) * 100 : 0;
 
@@ -2070,8 +2073,8 @@ function renderSavedSummary(orders){
   document.getElementById('savedSumFees').textContent = formatWon(-totalFees);
   document.getElementById('savedSumProfit').textContent = formatWon(netProfit);
   document.getElementById('savedSumMargin').textContent = marginRate.toFixed(1) + '%';
-  document.getElementById('savedSumProductCost').textContent = formatWon(-(totalProductCost + totalPackagingCost + totalCourierCost));
-  document.getElementById('savedSumExtraExpense').textContent = formatWon(-(totalAdExpense + totalOtherExpense));
+  document.getElementById('savedSumProductCost').textContent = formatWon(-(bd.totalProductCost + bd.totalPackagingCost + bd.totalCourierCost));
+  document.getElementById('savedSumExtraExpense').textContent = formatWon(-(bd.totalAdExpense + bd.totalOtherExpense));
 
   function breakdownRow(id, label, items, total, suffix){
     const itemsHtml = items.length
@@ -2086,14 +2089,14 @@ function renderSavedSummary(orders){
   }
 
   document.getElementById('savedCostDetail').innerHTML = `
-    ${breakdownRow('marketFee', '판매 수수료', marketFeeItems, totalMarketFee, '건')}
-    ${breakdownRow('shipFee', '배송 수수료', shipFeeItems, totalShipFee, '건')}
-    ${breakdownRow('otherFee', '기타 플랫폼 수수료', otherFeeItems, totalOtherFee, '건')}
-    ${breakdownRow('productCost', '상품 원가', productCostItems, totalProductCost, '건')}
-    ${breakdownRow('packagingCost', '포장비', packagingCostItems, totalPackagingCost, '건')}
-    ${breakdownRow('courierCost', '택배비', courierCostItems, totalCourierCost, '건')}
-    ${breakdownRow('adExpense', '광고비', adItems, totalAdExpense, '건 등록')}
-    ${breakdownRow('otherExpense', '기타 비용', otherItems, totalOtherExpense, '건 등록')}
+    ${breakdownRow('marketFee', '판매 수수료', bd.marketFeeItems, bd.totalMarketFee, '건')}
+    ${breakdownRow('shipFee', '배송 수수료', bd.shipFeeItems, bd.totalShipFee, '건')}
+    ${breakdownRow('otherFee', '기타 플랫폼 수수료', bd.otherFeeItems, bd.totalOtherFee, '건')}
+    ${breakdownRow('productCost', '상품 원가', bd.productCostItems, bd.totalProductCost, '건')}
+    ${breakdownRow('packagingCost', '포장비', bd.packagingCostItems, bd.totalPackagingCost, '건')}
+    ${breakdownRow('courierCost', '택배비', bd.courierCostItems, bd.totalCourierCost, '건')}
+    ${breakdownRow('adExpense', '광고비', bd.adItems, bd.totalAdExpense, '건 등록')}
+    ${breakdownRow('otherExpense', '기타 비용', bd.otherItems, bd.totalOtherExpense, '건 등록')}
     <div class="cost-row total"><span>총 비용</span><span class="amt-neg">${formatWon(-(totalFees + totalCostsAndExpense))}</span></div>
   `;
 }
@@ -2114,12 +2117,17 @@ function downloadSavedOrders(){
 
   const totalGross = orders.reduce((s, o) => s + (o.gross_sales || 0), 0);
   const totalSettlement = orders.reduce((s, o) => s + (o.settlement_amount || 0), 0);
-  const totalFees = orders.reduce((s, o) => s + (o.marketplace_fee || 0) + (o.shipping_fee || 0) + (o.other_platform_fee || 0), 0);
-  const totalProductCost = orders.reduce((s, o) => s + (o.product_cost || 0) + (o.packaging_cost || 0), 0);
-  const totalCourierCost = orders.reduce((s, o) => s + (o.courier_cost || 0), 0);
-  const totalAdCost = orders.reduce((s, o) => s + (o.allocated_ad_cost || 0), 0);
-  const totalOtherCost = orders.reduce((s, o) => s + (o.allocated_other_cost || 0), 0);
-  const totalNetProfit = orders.reduce((s, o) => s + (o.net_profit || 0), 0);
+  // 화면의 정산요약/비용상세와 완전히 같은 계산(computeCostBreakdown)을 써서
+  // 엑셀 숫자가 항상 화면과 일치하게 한다 - 예전엔 여기서 o.allocated_ad_cost
+  // 처럼 각 주문에 저장된 스냅샷 값을 더했는데, 그건 그 주문을 마지막으로
+  // 저장했을 때 기준이라 지금 보고 있는 기간의 추가비용과 어긋날 수 있었다.
+  const bd = computeCostBreakdown(orders);
+  const totalFees = bd.totalMarketFee + bd.totalShipFee + bd.totalOtherFee;
+  const totalProductCost = bd.totalProductCost + bd.totalPackagingCost;
+  const totalCourierCost = bd.totalCourierCost;
+  const totalAdCost = bd.totalAdExpense;
+  const totalOtherCost = bd.totalOtherExpense;
+  const totalNetProfit = totalSettlement - (totalProductCost + totalCourierCost + totalAdCost + totalOtherCost);
   const marginRate = totalGross > 0 ? (totalNetProfit / totalGross) * 100 : 0;
   const dates = orders.map(o => o.order_date).filter(Boolean).sort();
   const period = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} ~ ${dates[dates.length - 1]}`) : '';
@@ -2140,6 +2148,38 @@ function downloadSavedOrders(){
   ];
   const summaryWs = XLSX.utils.aoa_to_sheet(summaryAoa);
   summaryWs['!cols'] = [{ wch: 20 }, { wch: 24 }];
+
+  // 비용상세: 정산요약 카드의 "비용상세" 아코디언과 똑같이 8개 카테고리를
+  // 소계 + 건별 내역(날짜·내용·금액)으로 풀어서 보여준다.
+  const costDetailHeader = ['분류', '날짜', '내용', '금액'];
+  const costDetailSections = [
+    ['판매 수수료', bd.marketFeeItems],
+    ['배송 수수료', bd.shipFeeItems],
+    ['기타 플랫폼 수수료', bd.otherFeeItems],
+    ['상품 원가', bd.productCostItems],
+    ['포장비', bd.packagingCostItems],
+    ['택배비', bd.courierCostItems],
+    ['광고비', bd.adItems],
+    ['기타 비용', bd.otherItems],
+  ];
+  const costDetailAoa = [costDetailHeader];
+  costDetailSections.forEach(([label, items]) => {
+    const sectionTotal = items.reduce((s, i) => s + i.amt, 0);
+    costDetailAoa.push([label, '', `소계 (${items.length}건)`, -sectionTotal]);
+    items.forEach(i => costDetailAoa.push(['', i.date || '', i.name || '', -i.amt]));
+  });
+  const costDetailWs = XLSX.utils.aoa_to_sheet(costDetailAoa);
+  costDetailWs['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 30 }, { wch: 14 }];
+
+  // 주문자정보: 배송 확인용 - 엑셀에서 자동 인식했거나 구매자정보 바텀시트에서
+  // 고친 값 그대로. 구매자정보가 없는 주문(직접입력 등)은 빈 칸으로 남긴다.
+  const buyerHeader = ['주문일', '상품명', '수취인이름', '연락처', '배송지', '배송메모', '배송완료'];
+  const buyerAoa = [buyerHeader].concat(orders.map(o => [
+    o.order_date || '', o.product_name, o.buyer_name || '', o.buyer_phone || '', o.buyer_address || '', o.delivery_memo || '', o.delivered ? 'Y' : 'N',
+  ]));
+  const buyerWs = XLSX.utils.aoa_to_sheet(buyerAoa);
+  buyerWs['!autofilter'] = { ref: `A1:G${orders.length + 1}` };
+  buyerWs['!cols'] = [{ wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 16 }, { wch: 34 }, { wch: 24 }, { wch: 10 }];
 
   const orderHeader = ['주문일', '상품명', '판매처', '수량', '상품금액', '배송비', '총매출', '판매수수료', '배송수수료', '기타수수료', '정산액', '상품원가', '포장비', '택배비', '배분광고비', '배분기타비용', '순이익', '마진율(%)'];
   const orderAoa = [orderHeader].concat(orders.map(o => [
@@ -2171,8 +2211,12 @@ function downloadSavedOrders(){
   const costWs = XLSX.utils.aoa_to_sheet(costAoa);
   costWs['!cols'] = [{ wch: 12 }, { wch: 30 }, { wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 10 }];
 
+  // 화면의 "추가 비용" 카드 목록과 똑같이 지금 보고 있는 기간에 해당하는
+  // 것만 담는다 (전체 기간이면 range가 null이라 등록된 걸 전부 담음).
+  const range = getActivePeriodRange();
+  const periodExpenses = range ? otherExpenses.filter(e => e.expense_date >= range.start && e.expense_date <= range.end) : otherExpenses;
   const expenseHeader = ['날짜', '비용종류', '금액', '플랫폼', '메모'];
-  const expenseAoa = [expenseHeader].concat(otherExpenses.map(e => [
+  const expenseAoa = [expenseHeader].concat(periodExpenses.map(e => [
     e.expense_date, e.category, e.amount, e.platform ? (PLATFORM_LABELS[e.platform] || e.platform) : '전체 공통', e.memo || '',
   ]));
   const expenseWs = XLSX.utils.aoa_to_sheet(expenseAoa);
@@ -2180,9 +2224,11 @@ function downloadSavedOrders(){
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, orderWs, '주문상세');
+  XLSX.utils.book_append_sheet(wb, buyerWs, '주문자정보');
   XLSX.utils.book_append_sheet(wb, summaryWs, '정산요약');
+  XLSX.utils.book_append_sheet(wb, costDetailWs, '비용상세');
   XLSX.utils.book_append_sheet(wb, costWs, '원가관리');
-  XLSX.utils.book_append_sheet(wb, expenseWs, '기타지출');
+  XLSX.utils.book_append_sheet(wb, expenseWs, '추가비용');
 
   const today = new Date();
   const fname = `모모셀러_정산_${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}.xlsx`;
