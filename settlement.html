@@ -577,7 +577,8 @@ let customRangeEnd = null;
 let storeFilterValue = 'all'; // 'all' | '__untitled__' | a settlement_reports.id
 let platformFilterValue = 'all'; // 'all' | 'coupang' | 'smartstore'
 let orderListPage = 1;
-let orderListPageSize = 50; // 50 | 100 | 200
+let orderListPageSize = 50; // 10 | 50 | 100 | 200
+let folderPage = {}; // groupId(그룹없음 포함) -> 그 폴더를 펼쳤을 때의 독립적인 현재 페이지
 const UNGROUPED_FOLDER_KEY = '__ungrouped__'; // "그룹없음"도 다른 그룹과 똑같이 폴더 카드로 접고 펼 수 있게 쓰는 키
 // 그룹없음은 이름 붙여 만든 그룹이 아니라 "정리 안 한 주문 전부"라 대개 제일
 // 큰(혹은 유일한) 묶음이다 - 다른 이름 있는 그룹처럼 접힌 채 시작하면 방금 막
@@ -1803,6 +1804,9 @@ function toggleGroupFolder(groupId){
 // 주문목록이 길어져도 카드를 한번에 다 그리지 않고 페이지 단위로 잘라서
 // 보여준다 - 정산요약/일괄수정/전체선택은 항상 필터에 걸린 전체 목록
 // 기준이고, paginateOrders()는 오직 화면에 그릴 카드만 잘라낸다.
+// 페이지 "크기"(orderListPageSize)는 전체 공통이지만, 페이지 "번호"는 평평한
+// 목록(orderListPage)과 폴더뷰에서 펼쳐진 폴더 각각(folderPage[groupId])이
+// 서로 독립적이다 - 폴더 A를 2페이지까지 넘겨봐도 폴더 B는 1페이지 그대로.
 function clampOrderListPage(totalCount){
   const totalPages = Math.max(1, Math.ceil(totalCount / orderListPageSize));
   if(orderListPage > totalPages) orderListPage = totalPages;
@@ -1814,21 +1818,32 @@ function paginateOrders(orders){
   const startIdx = (orderListPage - 1) * orderListPageSize;
   return orders.slice(startIdx, startIdx + orderListPageSize);
 }
+function pageSizeSelectHtml(){
+  return `
+    <select onchange="changeOrderListPageSize(this.value)">
+      <option value="10" ${orderListPageSize === 10 ? 'selected' : ''}>10개씩 보기</option>
+      <option value="50" ${orderListPageSize === 50 ? 'selected' : ''}>50개씩 보기</option>
+      <option value="100" ${orderListPageSize === 100 ? 'selected' : ''}>100개씩 보기</option>
+      <option value="200" ${orderListPageSize === 200 ? 'selected' : ''}>200개씩 보기</option>
+    </select>
+  `;
+}
+function pageNavHtml(page, totalPages, onPrev, onNext){
+  return `
+    <div class="order-pagination-nav">
+      <button type="button" class="mini-btn" onclick="${onPrev}" ${page <= 1 ? 'disabled' : ''}>‹ 이전</button>
+      <span class="order-pagination-indicator">${page} / ${totalPages}</span>
+      <button type="button" class="mini-btn" onclick="${onNext}" ${page >= totalPages ? 'disabled' : ''}>다음 ›</button>
+    </div>
+  `;
+}
 function orderPaginationHtml(totalCount){
   if(totalCount === 0) return '';
   const totalPages = clampOrderListPage(totalCount);
   return `
     <div class="order-pagination">
-      <select onchange="changeOrderListPageSize(this.value)">
-        <option value="50" ${orderListPageSize === 50 ? 'selected' : ''}>50개씩 보기</option>
-        <option value="100" ${orderListPageSize === 100 ? 'selected' : ''}>100개씩 보기</option>
-        <option value="200" ${orderListPageSize === 200 ? 'selected' : ''}>200개씩 보기</option>
-      </select>
-      <div class="order-pagination-nav">
-        <button type="button" class="mini-btn" onclick="changeOrderListPage(${orderListPage - 1})" ${orderListPage <= 1 ? 'disabled' : ''}>‹ 이전</button>
-        <span class="order-pagination-indicator">${orderListPage} / ${totalPages}</span>
-        <button type="button" class="mini-btn" onclick="changeOrderListPage(${orderListPage + 1})" ${orderListPage >= totalPages ? 'disabled' : ''}>다음 ›</button>
-      </div>
+      ${pageSizeSelectHtml()}
+      ${pageNavHtml(orderListPage, totalPages, `changeOrderListPage(${orderListPage - 1})`, `changeOrderListPage(${orderListPage + 1})`)}
     </div>
   `;
 }
@@ -1839,6 +1854,22 @@ function changeOrderListPage(page){
 function changeOrderListPageSize(size){
   orderListPageSize = parseInt(size, 10);
   orderListPage = 1;
+  folderPage = {};
+  renderSavedOrdersTab();
+}
+// 폴더뷰에서 펼쳐진 폴더 하나의 주문 목록을 페이지 단위로 잘라 { items, page,
+// totalPages }로 돌려준다 - 페이지 번호는 그 폴더 id별로 독립적으로 기억된다.
+function paginateFolderItems(groupId, items){
+  const totalPages = Math.max(1, Math.ceil(items.length / orderListPageSize));
+  let page = folderPage[groupId] || 1;
+  if(page > totalPages) page = totalPages;
+  if(page < 1) page = 1;
+  folderPage[groupId] = page;
+  const startIdx = (page - 1) * orderListPageSize;
+  return { items: items.slice(startIdx, startIdx + orderListPageSize), page, totalPages };
+}
+function changeFolderPage(groupId, page){
+  folderPage[groupId] = page;
   renderSavedOrdersTab();
 }
 
@@ -1923,13 +1954,24 @@ async function renderSavedOrdersTab(){
           <span class="group-folder-count">${spec.items.length}건 <span class="cost-row-caret">${isOpen ? '▾' : '▸'}</span></span>
         </div>
       `;
-      const body = isOpen
-        ? `<div class="group-folder-body">${spec.items.length ? spec.items.map(orderCardHtml).join('') : '<div class="hint" style="margin:0 0 10px;">이 그룹에는 주문이 없어요.</div>'}</div>`
-        : '';
+      let body = '';
+      if(isOpen){
+        if(spec.items.length === 0){
+          body = `<div class="group-folder-body"><div class="hint" style="margin:0 0 10px;">이 그룹에는 주문이 없어요.</div></div>`;
+        } else {
+          const { items: paged, page, totalPages } = paginateFolderItems(spec.id, spec.items);
+          const nav = totalPages > 1
+            ? `<div class="order-pagination">${pageNavHtml(page, totalPages, `changeFolderPage('${spec.id}', ${page - 1})`, `changeFolderPage('${spec.id}', ${page + 1})`)}</div>`
+            : '';
+          body = `<div class="group-folder-body">${paged.map(orderCardHtml).join('')}${nav}</div>`;
+        }
+      }
       return header + body;
     }).join('');
     document.getElementById('savedOrderListWrap').innerHTML = folderHtml;
-    document.getElementById('orderListPaginationWrap').innerHTML = '';
+    // 페이지 "크기"는 폴더뷰에서도 공통이라 셀렉트 하나만 항상 보여준다 - 페이지
+    // "번호" 이동(이전/다음)은 각 폴더가 펼쳐졌을 때 그 폴더 본문 안에 따로 있다.
+    document.getElementById('orderListPaginationWrap').innerHTML = orders.length ? `<div class="order-pagination">${pageSizeSelectHtml()}</div>` : '';
   } else {
     // 폴더를 눌러 특정 그룹 안으로 들어온 상태(선택 모드는 제외)면, 다시 폴더
     // 목록으로 접을 수 있는 버튼을 목록 맨 위에 보여준다.
