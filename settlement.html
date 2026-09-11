@@ -302,8 +302,8 @@
       <div id="expenseForm" style="display:none; margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
         <div class="row" style="margin-bottom:10px;">
           <div>
-            <label for="expDate">날짜</label>
-            <input type="date" id="expDate">
+            <label>날짜</label>
+            <div id="expDateWrap"></div>
           </div>
           <div>
             <label for="expAmount">금액</label>
@@ -416,6 +416,7 @@ let customRangeStart = null; // set when 'custom' period is applied
 let customRangeEnd = null;
 let rangeStartInput = null; // buildDateSelectInput proxies, set up once in init()
 let rangeEndInput = null;
+let expDateInput = null; // buildDateSelectInput proxy, rebuilt each time the 추가 비용 form opens
 let storeFilterValue = 'all'; // 'all' | '__untitled__' | a settlement_reports.id
 let platformFilterValue = 'all'; // 'all' | 'coupang' | 'smartstore'
 let lastSavedReportId = null; // report just created by the most recent saveOrdersToDb call, if titled
@@ -791,11 +792,16 @@ function toggleExpenseForm(){
   const form = document.getElementById('expenseForm');
   const willShow = form.style.display === 'none';
   form.style.display = willShow ? 'block' : 'none';
-  if(willShow) document.getElementById('expDate').value = new Date().toISOString().slice(0, 10);
+  if(willShow){
+    const wrap = document.getElementById('expDateWrap');
+    wrap.innerHTML = '';
+    expDateInput = buildDateSelectInput(new Date().toISOString().slice(0, 10));
+    wrap.appendChild(expDateInput.wrapEl);
+  }
 }
 
 async function saveExpense(){
-  const dateVal = document.getElementById('expDate').value;
+  const dateVal = expDateInput ? expDateInput.value : '';
   const amount = Number(document.getElementById('expAmount').value);
   const category = document.getElementById('expCategory').value;
   const platform = document.getElementById('expPlatform').value || null;
