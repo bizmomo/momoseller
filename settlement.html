@@ -85,6 +85,7 @@
   .cost-row:last-child{ border-bottom:none; }
   .cost-row.total{ font-weight:700; border-top:1px solid var(--ink); margin-top:4px; padding-top:12px; }
   .cost-row span:first-child{ flex:1; }
+  .cost-row-count{ font-size:11.5px; color:var(--ink-soft); font-weight:400; }
   .table-scroll{ display:none; overflow-x:auto; }
   .desktop-table{ width:100%; border-collapse:collapse; font-size:12.5px; white-space:nowrap; }
   .desktop-table th, .desktop-table td{ padding:8px 10px; border-bottom:1px solid var(--line); text-align:right; }
@@ -1559,18 +1560,31 @@ function renderSavedSummary(orders){
   const totalPackagingCost = orders.reduce((s, o) => s + (o.packaging_cost || 0), 0);
   const totalCourierCost = orders.reduce((s, o) => s + (o.courier_cost || 0), 0);
 
-  const dates = orders.map(o => o.order_date).filter(Boolean);
-  let totalAdExpense = 0, totalOtherExpense = 0;
-  if(dates.length){
-    const start = dates.reduce((a, b) => a < b ? a : b);
-    const end = dates.reduce((a, b) => a > b ? a : b);
-    otherExpenses.forEach(e => {
-      if(e.expense_date >= start && e.expense_date <= end){
-        const amt = Math.abs(e.amount);
-        if(e.category === '광고비') totalAdExpense += amt; else totalOtherExpense += amt;
-      }
-    });
+  const marketFeeCount = orders.filter(o => o.marketplace_fee).length;
+  const shipFeeCount = orders.filter(o => o.shipping_fee).length;
+  const otherFeeCount = orders.filter(o => o.other_platform_fee).length;
+  const productCostCount = orders.filter(o => o.product_cost).length;
+  const packagingCostCount = orders.filter(o => o.packaging_cost).length;
+  const courierCostCount = orders.filter(o => o.courier_cost).length;
+
+  // same period window the order list itself is filtered by (오늘/어제/.../전체/기간지정) -
+  // NOT derived from the visible orders' own dates. An expense (e.g. today's ad spend) must
+  // count whenever it falls in the selected period even if no order happens to land on that
+  // exact date, and "전체" has to mean genuinely unbounded rather than "span of orders shown".
+  let range = null;
+  if(periodFilter === 'custom'){
+    if(customRangeStart && customRangeEnd) range = { start: customRangeStart, end: customRangeEnd };
+  } else if(periodFilter !== 'all'){
+    range = computePeriodRange(periodFilter);
   }
+
+  let totalAdExpense = 0, totalOtherExpense = 0, adExpenseCount = 0, otherExpenseCount = 0;
+  otherExpenses.forEach(e => {
+    if(range && (e.expense_date < range.start || e.expense_date > range.end)) return;
+    const amt = Math.abs(e.amount);
+    if(e.category === '광고비'){ totalAdExpense += amt; adExpenseCount++; }
+    else { totalOtherExpense += amt; otherExpenseCount++; }
+  });
 
   const totalCostsAndExpense = totalProductCost + totalPackagingCost + totalCourierCost + totalAdExpense + totalOtherExpense;
   const netProfit = totalSettlement - totalCostsAndExpense;
@@ -1583,15 +1597,18 @@ function renderSavedSummary(orders){
   document.getElementById('savedSumMargin').textContent = marginRate.toFixed(1) + '%';
   document.getElementById('savedSumCostsAndExpense').textContent = formatWon(-totalCostsAndExpense);
 
+  const row = (label, count, suffix, amount) => `
+    <div class="cost-row"><span>${label} <span class="cost-row-count">(${count}${suffix})</span></span><span class="amt-neg">${formatWon(-amount)}</span></div>`;
+
   document.getElementById('savedCostDetail').innerHTML = `
-    <div class="cost-row"><span>판매 수수료</span><span class="amt-neg">${formatWon(-totalMarketFee)}</span></div>
-    <div class="cost-row"><span>배송 수수료</span><span class="amt-neg">${formatWon(-totalShipFee)}</span></div>
-    <div class="cost-row"><span>기타 플랫폼 수수료</span><span class="amt-neg">${formatWon(-totalOtherFee)}</span></div>
-    <div class="cost-row"><span>상품 원가</span><span class="amt-neg">${formatWon(-totalProductCost)}</span></div>
-    <div class="cost-row"><span>포장비</span><span class="amt-neg">${formatWon(-totalPackagingCost)}</span></div>
-    <div class="cost-row"><span>택배비</span><span class="amt-neg">${formatWon(-totalCourierCost)}</span></div>
-    <div class="cost-row"><span>광고비</span><span class="amt-neg">${formatWon(-totalAdExpense)}</span></div>
-    <div class="cost-row"><span>기타 비용</span><span class="amt-neg">${formatWon(-totalOtherExpense)}</span></div>
+    ${row('판매 수수료', marketFeeCount, '건', totalMarketFee)}
+    ${row('배송 수수료', shipFeeCount, '건', totalShipFee)}
+    ${row('기타 플랫폼 수수료', otherFeeCount, '건', totalOtherFee)}
+    ${row('상품 원가', productCostCount, '건', totalProductCost)}
+    ${row('포장비', packagingCostCount, '건', totalPackagingCost)}
+    ${row('택배비', courierCostCount, '건', totalCourierCost)}
+    ${row('광고비', adExpenseCount, '건 등록', totalAdExpense)}
+    ${row('기타 비용', otherExpenseCount, '건 등록', totalOtherExpense)}
     <div class="cost-row total"><span>총 비용</span><span class="amt-neg">${formatWon(-(totalFees + totalCostsAndExpense))}</span></div>
   `;
 }
