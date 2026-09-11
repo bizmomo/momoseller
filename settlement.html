@@ -79,6 +79,9 @@
   .platform-smartstore{ color:var(--teal); font-weight:500; }
   .store-badge{ display:inline-block; background:#FFE896; color:#6B5300; font-size:11px; font-weight:500; padding:2px 7px; border-radius:3px; }
   .order-detail{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); font-size:12.5px; }
+  .order-form-fields label{ margin-bottom:4px; }
+  .order-form-fields .field-block{ margin-bottom:10px; }
+  .order-form-fields input[type=text], .order-form-fields input[type=number], .order-form-fields select{ padding:7px 10px; font-size:13.5px; }
   .order-detail-row{ display:flex; justify-content:space-between; padding:3px 0; }
   .order-detail-row.total{ font-weight:700; border-top:1px solid var(--line); margin-top:4px; padding-top:6px; }
   .cost-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; font-size:13.5px; border-bottom:1px solid var(--line); gap:8px; }
@@ -2225,6 +2228,7 @@ function buildOrderFormFields(order){
   courierCostInput.value = o.courier_cost != null ? o.courier_cost : 0;
 
   const wrap = document.createElement('div');
+  wrap.className = 'order-form-fields';
 
   const platformBlock = buildLabeledInput('판매처', platformSel);
   platformBlock.className = 'field-block';
@@ -2244,21 +2248,21 @@ function buildOrderFormFields(order){
 
   const row2 = document.createElement('div');
   row2.className = 'row';
-  row2.style.marginBottom = '14px';
+  row2.style.marginBottom = '10px';
   row2.appendChild(buildLabeledInput('수량', quantityInput));
   row2.appendChild(buildLabeledInput('상품 금액 (원)', productAmountInput));
   wrap.appendChild(row2);
 
   const row3 = document.createElement('div');
   row3.className = 'row';
-  row3.style.marginBottom = '14px';
+  row3.style.marginBottom = '10px';
   row3.appendChild(buildLabeledInput('배송비 받음 (원)', shippingAmountInput));
   row3.appendChild(buildLabeledInput('수수료 (원)', feeInput));
   wrap.appendChild(row3);
 
   const row4 = document.createElement('div');
   row4.className = 'row';
-  row4.style.marginBottom = '14px';
+  row4.style.marginBottom = '10px';
   row4.appendChild(buildLabeledInput('원가 (원)', costInput));
   row4.appendChild(buildLabeledInput('택배비 (원)', courierCostInput));
   wrap.appendChild(row4);
@@ -2438,7 +2442,7 @@ function toggleSavedOrderEdit(id){
     const order = (window._savedOrdersCache || []).find(o => o.id === id);
     if(!order) return;
     const built = buildOrderFormFields(order);
-    built.wrap.className = 'order-detail';
+    built.wrap.classList.add('order-detail');
     container.appendChild(built.wrap);
     container.dataset.built = '1';
     container._fields = built.fields;
