@@ -99,7 +99,14 @@
   .order-card-buyer{ font-size:12px; color:var(--teal); margin:-4px 0 8px; }
   .order-card-buyer:hover{ text-decoration:underline; }
   .delivered-badge{ color:var(--ink-soft); font-weight:500; }
+  .repeat-badge{ display:inline-block; background:#FFE896; color:#6B5300; font-size:11px; font-weight:500; padding:1px 6px; border-radius:3px; margin-left:4px; }
   .buyer-info-readonly{ font-size:13.5px; padding:8px 0; }
+  .buyer-field-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .buyer-field-row .buyer-info-readonly{ flex:1; word-break:break-all; }
+  .copy-btn{ flex:0 0 auto; font-size:12px; padding:4px 9px; border:1px solid var(--line); border-radius:4px; background:#fff; color:var(--ink-soft); cursor:pointer; }
+  .copy-btn:active{ background:#F3F8F7; }
+  .buyer-section-label{ font-size:12px; color:var(--ink-soft); font-weight:500; margin:14px 0 2px; }
+  .buyer-section-label:first-child{ margin-top:0; }
   .order-card-nums{ display:flex; gap:16px; font-size:12.5px; color:var(--ink-soft); flex-wrap:wrap; row-gap:8px; }
   .order-card-nums b{ color:var(--ink); font-size:13.5px; display:block; margin-top:2px; }
   .platform-coupang{ color:var(--error); font-weight:500; }
@@ -381,17 +388,34 @@
           </button>
         </div>
         <div class="sheet-body compact-fields">
+          <button type="button" class="secondary" style="margin-bottom:6px;" onclick="copyAllBuyerInfo(this)">📋 전체 복사</button>
+
+          <div class="buyer-section-label">구매자 <span class="repeat-badge" id="buyerInfoRepeatBadge" style="display:none;">재구매</span></div>
           <div class="field-block">
-            <label>주문자</label>
-            <div class="buyer-info-readonly" id="buyerInfoName"></div>
+            <label for="buyerInfoAccountName">구매자 이름</label>
+            <input type="text" id="buyerInfoAccountName" placeholder="구매자 이름 (없으면 직접 입력)">
+          </div>
+          <div class="field-block">
+            <label for="buyerInfoAccountId">구매자 ID</label>
+            <input type="text" id="buyerInfoAccountId" placeholder="구매자 ID (재구매 확인용, 없으면 직접 입력)">
+          </div>
+
+          <div class="buyer-section-label">수취인</div>
+          <div class="field-block">
+            <label>수취인 이름</label>
+            <div class="buyer-field-row"><div class="buyer-info-readonly" id="buyerInfoName"></div><button type="button" class="copy-btn" onclick="copyFieldText('buyerInfoName', this)">복사</button></div>
           </div>
           <div class="field-block">
             <label>연락처</label>
-            <div class="buyer-info-readonly" id="buyerInfoPhone"></div>
+            <div class="buyer-field-row"><div class="buyer-info-readonly" id="buyerInfoPhone"></div><button type="button" class="copy-btn" onclick="copyFieldText('buyerInfoPhone', this)">복사</button></div>
           </div>
           <div class="field-block">
-            <label>배송지</label>
-            <div class="buyer-info-readonly" id="buyerInfoAddress"></div>
+            <label>기본주소</label>
+            <div class="buyer-field-row"><div class="buyer-info-readonly" id="buyerInfoAddress"></div><button type="button" class="copy-btn" onclick="copyFieldText('buyerInfoAddress', this)">복사</button></div>
+          </div>
+          <div class="field-block">
+            <label>상세주소</label>
+            <div class="buyer-field-row"><div class="buyer-info-readonly" id="buyerInfoAddressDetail"></div><button type="button" class="copy-btn" onclick="copyFieldText('buyerInfoAddressDetail', this)">복사</button></div>
           </div>
           <div class="field-block">
             <label for="buyerInfoMemo">배송 메모</label>
@@ -524,7 +548,7 @@ requireAuth(function(user){
 });
 
 async function init(){
-  await Promise.all([loadCostMap(), loadOtherExpenses()]);
+  await Promise.all([loadCostMap(), loadOtherExpenses(), loadBuyerRepeatCounts()]);
   await reconcileCostMap();
   renderExpenseList();
   loadUploadDraft();
@@ -572,6 +596,7 @@ let analyzedOrders = [];  // flattened normalized rows across all valid files, f
 let fileSeq = 0;
 let costMap = {};         // costKey -> { unitCost, packagingCost }
 let otherExpenses = [];   // rows from other_expenses for the current user
+let buyerRepeatCounts = {}; // buyer_account_id -> 이 계정으로 주문한 전체 건수 (재구매 배지용)
 let periodFilter = 'all'; // 'all' | 'today' | 'week' | 'month1' | 'year1' | 'custom'
 let customRangeStart = null; // set when 'custom' period is applied
 let customRangeEnd = null;
@@ -745,7 +770,13 @@ function getColOrNull(row, map, candidateNames){
 const BUYER_NAME_NAMES = ['수취인이름', '수취인명', '받는분', '받는사람'];
 const BUYER_PHONE_NAMES = ['수취인연락처1', '수취인전화번호', '수취인휴대폰번호'];
 const BUYER_ADDRESS_NAMES = ['통합배송지', '배송지', '수취인주소'];
+const BUYER_ADDRESS_DETAIL_NAMES = ['상세주소', '나머지주소', '상세 주소'];
 const DELIVERY_MEMO_NAMES = ['배송메세지', '배송메시지', '배송메모', '배송시 요청사항', '배송요청사항'];
+// 수취인(받는 사람)과 별개로 실제 주문/결제한 사람 - 재구매 여부를 이름이
+// 아니라 ID로 확인하기 위해 필요. 재구매 배지, 구매자 표시용으로만 쓰고
+// 정산 계산에는 관여하지 않는다.
+const PURCHASER_NAME_NAMES = ['구매자', '구매자명', '주문자', '주문자명'];
+const PURCHASER_ID_NAMES = ['구매자ID', '구매자 ID', '구매자아이디', '주문자ID', '아이디'];
 
 // ============ per-platform row parsing -> common normalized structure ============
 function getPlatformSpec(platform){
@@ -819,6 +850,9 @@ function parseOneRow(row, platform, map, settings, rows, fileName){
       buyerName: getColOrNull(row, map, BUYER_NAME_NAMES),
       buyerPhone: getColOrNull(row, map, BUYER_PHONE_NAMES),
       buyerAddress: getColOrNull(row, map, BUYER_ADDRESS_NAMES),
+      buyerAddressDetail: getColOrNull(row, map, BUYER_ADDRESS_DETAIL_NAMES),
+      buyerAccountName: getColOrNull(row, map, PURCHASER_NAME_NAMES),
+      buyerAccountId: getColOrNull(row, map, PURCHASER_ID_NAMES),
       deliveryMemo: getColOrNull(row, map, DELIVERY_MEMO_NAMES),
     });
   } else {
@@ -880,6 +914,9 @@ function parseOneRow(row, platform, map, settings, rows, fileName){
       buyerName: getColOrNull(row, map, BUYER_NAME_NAMES),
       buyerPhone: getColOrNull(row, map, BUYER_PHONE_NAMES),
       buyerAddress: getColOrNull(row, map, BUYER_ADDRESS_NAMES),
+      buyerAddressDetail: getColOrNull(row, map, BUYER_ADDRESS_DETAIL_NAMES),
+      buyerAccountName: getColOrNull(row, map, PURCHASER_NAME_NAMES),
+      buyerAccountId: getColOrNull(row, map, PURCHASER_ID_NAMES),
       deliveryMemo: getColOrNull(row, map, DELIVERY_MEMO_NAMES),
     });
   }
@@ -1023,6 +1060,19 @@ async function reconcileCostMap(){
       .eq('product_name', productName).eq('option_name', optionName || '');
     delete costMap[key];
   }
+}
+
+// 구매자ID별 전체 주문 건수를 집계해 재구매 배지에 쓴다. 이름이 아니라
+// ID로 확인해야 동명이인을 재구매로 잘못 표시하지 않는다. 지금 필터에
+// 걸린 목록이 아니라 계정 전체 주문을 봐야 정확하므로 따로 조회한다.
+async function loadBuyerRepeatCounts(){
+  const { data } = await sb.from('settlement_orders').select('buyer_account_id').eq('user_id', currentUser.id);
+  const counts = {};
+  (data || []).forEach(r => {
+    if(!r.buyer_account_id) return;
+    counts[r.buyer_account_id] = (counts[r.buyer_account_id] || 0) + 1;
+  });
+  buyerRepeatCounts = counts;
 }
 
 // ============ other expenses DB ============
@@ -1591,6 +1641,9 @@ async function saveOrdersToDb(orders, storeSelection){
     buyer_name: o.buyerName || null,
     buyer_phone: o.buyerPhone || null,
     buyer_address: o.buyerAddress || null,
+    buyer_address_detail: o.buyerAddressDetail || null,
+    buyer_account_name: o.buyerAccountName || null,
+    buyer_account_id: o.buyerAccountId || null,
     delivery_memo: o.deliveryMemo || null,
     updated_at: new Date().toISOString(),
   }));
@@ -1628,6 +1681,7 @@ async function saveOrdersToDb(orders, storeSelection){
   }
 
   rows.forEach(r => recentlyAddedOrderKeys.add(savedOrderNaturalKey(r)));
+  await loadBuyerRepeatCounts();
 
   statusEl.textContent = `✓ ${rows.length}건 저장했어요.`;
   statusEl.className = 'status';
@@ -2211,9 +2265,13 @@ function downloadSavedOrders(){
   // 주문자정보: 배송 확인용 - 엑셀에서 자동 인식했거나 구매자정보 바텀시트에서
   // 고친 값 그대로. 구매자정보가 없는 주문(직접입력 등)은 빈 칸으로 남긴다.
   pushSection('주문자정보');
-  pushRow(['주문일', '상품명', '수취인이름', '연락처', '배송지', '배송메모', '배송완료']);
+  pushRow(['주문일', '상품명', '구매자명', '구매자ID', '재구매', '수취인이름', '연락처', '기본주소', '상세주소', '배송메모', '배송완료']);
   orders.forEach(o => pushRow([
-    o.order_date || '', o.product_name, o.buyer_name || '', o.buyer_phone || '', o.buyer_address || '', o.delivery_memo || '', o.delivered ? 'Y' : 'N',
+    o.order_date || '', o.product_name,
+    o.buyer_account_name || '', o.buyer_account_id || '',
+    (o.buyer_account_id && buyerRepeatCounts[o.buyer_account_id] > 1) ? 'Y' : '',
+    o.buyer_name || '', o.buyer_phone || '', o.buyer_address || '', o.buyer_address_detail || '',
+    o.delivery_memo || '', o.delivered ? 'Y' : 'N',
   ]));
   pushBlank(2);
 
@@ -2371,7 +2429,7 @@ function savedOrderSummaryHtml(o){
   return `
     <div class="order-card-top"><span>${isNew ? '<span class="new-badge">NEW</span>' : ''}${escapeHtml(o.order_date)}</span><span class="${platformClass}"><span class="platform-logo ${logoClass}">${logoChar}</span>${escapeHtml(PLATFORM_LABELS[o.platform] || o.platform)}</span></div>
     <div class="order-card-name">${escapeHtml(o.product_name)}${o.option_name ? ' (' + escapeHtml(o.option_name) + ')' : ''}${o.quantity > 1 ? ` × ${o.quantity}` : ''}</div>
-    ${o.buyer_name ? `<div class="order-card-buyer" onclick="event.stopPropagation(); openBuyerInfoSheet('${o.id}')">👤 ${escapeHtml(o.buyer_name)}${o.delivered ? ' <span class="delivered-badge">· 배송완료</span>' : ''} ›</div>` : ''}
+    ${(o.buyer_name || o.buyer_account_name) ? `<div class="order-card-buyer" onclick="event.stopPropagation(); openBuyerInfoSheet('${o.id}')">👤 ${escapeHtml(o.buyer_account_name || o.buyer_name)}${(o.buyer_account_id && buyerRepeatCounts[o.buyer_account_id] > 1) ? ' <span class="repeat-badge">재구매</span>' : ''}${o.delivered ? ' <span class="delivered-badge">· 배송완료</span>' : ''} ›</div>` : ''}
     ${storeTitle ? `<div style="margin:2px 0 6px;"><span class="store-badge">🏷 ${escapeHtml(storeTitle)}</span></div>` : ''}
     <div class="order-card-nums">
       <span>매출<b>${formatWon(o.gross_sales)}</b></span>
@@ -2393,12 +2451,17 @@ function openBuyerInfoSheet(id){
   const order = (window._savedOrdersCache || []).find(o => o.id === id);
   if(!order) return;
   buyerInfoOrderId = id;
+  document.getElementById('buyerInfoAccountName').value = order.buyer_account_name || '';
+  document.getElementById('buyerInfoAccountId').value = order.buyer_account_id || '';
   document.getElementById('buyerInfoName').textContent = order.buyer_name || '-';
   document.getElementById('buyerInfoPhone').textContent = order.buyer_phone || '-';
   document.getElementById('buyerInfoAddress').textContent = order.buyer_address || '-';
+  document.getElementById('buyerInfoAddressDetail').textContent = order.buyer_address_detail || '-';
   document.getElementById('buyerInfoMemo').value = order.delivery_memo || '';
   document.getElementById('buyerInfoDelivered').checked = !!order.delivered;
   document.getElementById('buyerInfoStatus').textContent = '';
+  const repeatBadge = document.getElementById('buyerInfoRepeatBadge');
+  repeatBadge.style.display = (order.buyer_account_id && buyerRepeatCounts[order.buyer_account_id] > 1) ? 'inline-block' : 'none';
   document.getElementById('buyerInfoSheetOverlay').style.display = 'flex';
 }
 
@@ -2412,6 +2475,8 @@ async function saveBuyerInfo(){
   const id = buyerInfoOrderId;
   const statusEl = document.getElementById('buyerInfoStatus');
   const row = {
+    buyer_account_name: document.getElementById('buyerInfoAccountName').value.trim() || null,
+    buyer_account_id: document.getElementById('buyerInfoAccountId').value.trim() || null,
     delivery_memo: document.getElementById('buyerInfoMemo').value.trim() || null,
     delivered: document.getElementById('buyerInfoDelivered').checked,
   };
@@ -2432,9 +2497,50 @@ async function saveBuyerInfo(){
     const summaryEl = document.getElementById('savedOrderSummaryInner-' + id);
     if(summaryEl) summaryEl.innerHTML = savedOrderSummaryHtml(window._savedOrdersCache[idx]);
   }
+  await loadBuyerRepeatCounts();
 
   statusEl.textContent = '✓ 저장됐어요.';
   statusEl.style.color = 'var(--teal)';
+}
+
+// 클립보드 복사 - 배송 보낼 때 이름/연락처/주소를 택배사 폼이나 카톡에 바로
+// 붙여넣을 수 있게. navigator.clipboard가 막힌 환경(구형 브라우저, http 등)
+// 대비로 실패하면 안내만 띄우고 조용히 넘어간다.
+async function copyText(text, btnEl){
+  if(!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    if(btnEl){
+      const orig = btnEl.textContent;
+      btnEl.textContent = '복사됨';
+      setTimeout(() => { btnEl.textContent = orig; }, 1200);
+    }
+  } catch(e){
+    alert('복사에 실패했어요. 텍스트를 길게 눌러서 직접 복사해주세요.');
+  }
+}
+
+function copyFieldText(elId, btnEl){
+  const el = document.getElementById(elId);
+  const text = el.textContent.trim();
+  if(!text || text === '-') return;
+  copyText(text, btnEl);
+}
+
+function copyAllBuyerInfo(btnEl){
+  if(!buyerInfoOrderId) return;
+  const order = (window._savedOrdersCache || []).find(o => o.id === buyerInfoOrderId);
+  if(!order) return;
+  const address = [order.buyer_address, order.buyer_address_detail].filter(Boolean).join(' ');
+  const lines = [
+    order.buyer_account_name ? `구매자: ${order.buyer_account_name}` : null,
+    order.buyer_name ? `수취인: ${order.buyer_name}` : null,
+    order.buyer_phone ? `연락처: ${order.buyer_phone}` : null,
+    address ? `주소: ${address}` : null,
+    order.delivery_memo ? `배송메모: ${order.delivery_memo}` : null,
+  ].filter(Boolean);
+  if(lines.length === 0) return;
+  copyText(lines.join('\n'), btnEl);
 }
 
 function toggleSelectMode(){
@@ -2628,6 +2734,7 @@ async function submitBulkDelete(){
     .filter(Boolean)
     .map(o => ({ platform: o.platform, productName: o.product_name, optionName: o.option_name }));
   await cleanupOrphanedCosts(deletedRefs);
+  await loadBuyerRepeatCounts();
 
   selectMode = false;
   selectedOrderIds.clear();
@@ -3091,6 +3198,7 @@ async function deleteSavedOrder(id){
   const { error } = await sb.from('settlement_orders').delete().eq('id', id);
   if(!error){
     if(existing) await cleanupOrphanedCosts([{ platform: existing.platform, productName: existing.product_name, optionName: existing.option_name }]);
+    await loadBuyerRepeatCounts();
     renderSavedOrdersTab();
   }
 }
