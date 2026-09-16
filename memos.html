@@ -9,6 +9,12 @@
 <link href="shared.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="auth.js"></script>
+<style>
+  .filter-chip-row{ display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; flex-wrap:wrap; margin-bottom:14px; }
+  .filter-chip{ flex-shrink:0; white-space:nowrap; padding:6px 10px; font-size:12.5px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:14px; cursor:pointer; }
+  .filter-chip.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
+  .memo-important{ color:var(--accent-deep); }
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -19,15 +25,53 @@
       <p>구매처, 상품, 거래처, 업무 아이디어 등을 기록해요.</p>
     </div>
     <div class="page-actions">
-      <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+      <button class="icon-btn" onclick="handleBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
       <button class="icon-btn" onclick="sharePage()" aria-label="공유하기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg></button>
     </div>
   </div>
 
-  <div class="card">
-    <span class="soon-badge">곧 추가돼요</span>
-    <h2>검색·분류·중요 메모 고정</h2>
-    <p class="hint">구매처, 거래처, 아이디어, 할 일 같은 메모를 분류별로 저장하고 검색할 수 있는 기능을 준비하고 있어요. 중요 메모는 목록 상단에 고정돼요.</p>
+  <!-- ============ 목록 화면 ============ -->
+  <div id="listView">
+    <button type="button" class="primary" style="margin-bottom:14px;" onclick="showAddForm()">+ 메모 작성</button>
+    <div class="field-block">
+      <input type="text" id="memoSearch" placeholder="제목·내용 검색" oninput="handleSearchInput()">
+    </div>
+    <div class="filter-chip-row" id="categoryChipRow"></div>
+    <div id="memoListWrap"><div class="empty-note">불러오는 중...</div></div>
+  </div>
+
+  <!-- ============ 작성/수정 화면 ============ -->
+  <div id="formView" style="display:none;">
+    <div class="card">
+      <h2 id="formTitle">메모 작성</h2>
+      <div class="field-block">
+        <label for="memoTitle">제목</label>
+        <input type="text" id="memoTitle" placeholder="제목을 입력하세요">
+      </div>
+      <div class="row">
+        <div class="field-block">
+          <label for="memoCategory">분류</label>
+          <select id="memoCategory" onchange="handleCategoryChange(this)"></select>
+        </div>
+        <div class="field-block">
+          <label style="visibility:hidden;">중요</label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:13.5px; color:var(--ink); padding:10px 0;">
+            <input type="checkbox" id="memoImportant" style="width:auto;"> 중요 메모로 표시
+          </label>
+        </div>
+      </div>
+      <div class="field-block" id="memoCategoryNewWrap" style="display:none;">
+        <label for="memoCategoryNew">새 분류 이름</label>
+        <input type="text" id="memoCategoryNew" placeholder="새 분류 이름을 입력하세요">
+      </div>
+      <div class="field-block">
+        <label for="memoContent">내용</label>
+        <textarea id="memoContent" rows="8" placeholder="내용을 입력하세요"></textarea>
+      </div>
+      <div class="status" id="formStatus"></div>
+      <button type="button" class="primary" onclick="saveMemo()">저장</button>
+      <button type="button" class="secondary" onclick="switchView('list')">취소</button>
+    </div>
   </div>
 
 </div>
@@ -41,7 +85,214 @@
 </div></nav>
 
 <script>
-requireAuth(function(){});
+let currentUser = null;
+let memos = [];
+let customCategories = [];
+let categoryFilter = 'all';
+let searchQuery = '';
+let editingId = null;
+
+const DEFAULT_CATEGORIES = ['상품', '거래처', '자재', '구매', '정산', '아이디어', '할일', '기타'];
+
+requireAuth(function(user){
+  currentUser = user;
+  init();
+});
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+function truncate(str, n){
+  str = str || '';
+  return str.length > n ? str.slice(0, n) + '…' : str;
+}
+
+function handleBack(){
+  const inList = document.getElementById('listView').style.display !== 'none';
+  if(!inList){ switchView('list'); return; }
+  goBack();
+}
+
+function switchView(view){
+  document.getElementById('listView').style.display = view === 'list' ? '' : 'none';
+  document.getElementById('formView').style.display = view === 'form' ? '' : 'none';
+  if(view === 'list'){ renderCategoryChips(); renderMemoList(); }
+}
+
+async function init(){
+  await loadMemos();
+  renderCategoryChips();
+  renderMemoList();
+}
+
+async function loadMemos(){
+  const [memosRes, categoriesRes] = await Promise.all([
+    sb.from('seller_memos').select('*').eq('user_id', currentUser.id),
+    sb.from('memo_categories').select('*').eq('user_id', currentUser.id).order('name'),
+  ]);
+  memos = memosRes.data || [];
+  customCategories = (categoriesRes.data || []).map(c => c.name);
+}
+
+function allCategories(){
+  return DEFAULT_CATEGORIES.concat(customCategories.filter(c => !DEFAULT_CATEGORIES.includes(c)));
+}
+
+function renderCategoryChips(){
+  const el = document.getElementById('categoryChipRow');
+  const chips = [{ key: 'all', label: '전체' }].concat(allCategories().map(c => ({ key: c, label: c })));
+  el.innerHTML = chips.map(c => `<button type="button" class="filter-chip ${categoryFilter === c.key ? 'active' : ''}" onclick="setCategoryFilter('${c.key}')">${escapeHtml(c.label)}</button>`).join('');
+}
+
+function setCategoryFilter(key){
+  categoryFilter = key;
+  renderCategoryChips();
+  renderMemoList();
+}
+
+function handleSearchInput(){
+  searchQuery = document.getElementById('memoSearch').value.trim().toLowerCase();
+  renderMemoList();
+}
+
+function filteredMemos(){
+  let list = memos;
+  if(categoryFilter !== 'all') list = list.filter(m => m.category === categoryFilter);
+  if(searchQuery){
+    list = list.filter(m => (m.title || '').toLowerCase().includes(searchQuery) || (m.content || '').toLowerCase().includes(searchQuery));
+  }
+  return list.slice().sort((a, b) => {
+    if(!!a.is_important !== !!b.is_important) return a.is_important ? -1 : 1;
+    return (b.updated_at || '').localeCompare(a.updated_at || '');
+  });
+}
+
+function renderMemoList(){
+  const wrap = document.getElementById('memoListWrap');
+  const list = filteredMemos();
+  if(list.length === 0){
+    wrap.innerHTML = '<div class="empty-note">메모가 없어요.</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(m => `
+    <div class="history-item">
+      <div class="hi-top">
+        <span>${m.is_important ? '<span class="memo-important">★</span> ' : ''}${escapeHtml(m.title)}</span>
+        <span class="hi-date">${escapeHtml(m.category)}</span>
+      </div>
+      <div class="hi-input">${escapeHtml(truncate(m.content, 80))}</div>
+      <div class="hi-actions">
+        <button type="button" class="mini-btn" onclick="showEditForm('${m.id}')">수정</button>
+        <button type="button" class="mini-btn danger" onclick="deleteMemo('${m.id}')">삭제</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ============ 작성/수정 ============
+
+function populateCategorySelect(selected){
+  const sel = document.getElementById('memoCategory');
+  sel.innerHTML = allCategories().map(c => `<option value="${escapeHtml(c)}" ${c === selected ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')
+    + '<option value="__new__">+ 새 분류 추가</option>';
+  document.getElementById('memoCategoryNewWrap').style.display = 'none';
+  document.getElementById('memoCategoryNew').value = '';
+}
+
+function handleCategoryChange(sel){
+  document.getElementById('memoCategoryNewWrap').style.display = sel.value === '__new__' ? '' : 'none';
+}
+
+function showAddForm(){
+  editingId = null;
+  document.getElementById('formTitle').textContent = '메모 작성';
+  document.getElementById('memoTitle').value = '';
+  document.getElementById('memoContent').value = '';
+  document.getElementById('memoImportant').checked = false;
+  document.getElementById('formStatus').textContent = '';
+  populateCategorySelect(DEFAULT_CATEGORIES[0]);
+  switchView('form');
+}
+
+function showEditForm(id){
+  const m = memos.find(x => x.id === id);
+  if(!m) return;
+  editingId = id;
+  document.getElementById('formTitle').textContent = '메모 수정';
+  document.getElementById('memoTitle').value = m.title || '';
+  document.getElementById('memoContent').value = m.content || '';
+  document.getElementById('memoImportant').checked = !!m.is_important;
+  document.getElementById('formStatus').textContent = '';
+  populateCategorySelect(m.category);
+  switchView('form');
+}
+
+async function saveMemo(){
+  const statusEl = document.getElementById('formStatus');
+  const title = document.getElementById('memoTitle').value.trim();
+  if(!title){
+    statusEl.textContent = '제목을 입력해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+  let category = document.getElementById('memoCategory').value;
+  if(category === '__new__'){
+    category = document.getElementById('memoCategoryNew').value.trim();
+    if(!category){
+      statusEl.textContent = '새 분류 이름을 입력해주세요.';
+      statusEl.style.color = 'var(--error)';
+      return;
+    }
+  }
+
+  statusEl.textContent = '저장하는 중...';
+  statusEl.style.color = '';
+
+  if(!allCategories().includes(category)){
+    await sb.from('memo_categories').insert({ user_id: currentUser.id, name: category });
+    customCategories.push(category);
+  }
+
+  const fields = {
+    title, category,
+    content: document.getElementById('memoContent').value.trim(),
+    is_important: document.getElementById('memoImportant').checked,
+    updated_at: new Date().toISOString(),
+  };
+
+  if(editingId){
+    const { error } = await sb.from('seller_memos').update(fields).eq('id', editingId);
+    if(error){
+      statusEl.textContent = `저장에 실패했어요: ${error.message || '알 수 없는 오류'}`;
+      statusEl.style.color = 'var(--error)';
+      return;
+    }
+  } else {
+    const { error } = await sb.from('seller_memos').insert(Object.assign({ user_id: currentUser.id }, fields));
+    if(error){
+      statusEl.textContent = `저장에 실패했어요: ${error.message || '알 수 없는 오류'}`;
+      statusEl.style.color = 'var(--error)';
+      return;
+    }
+  }
+
+  await loadMemos();
+  switchView('list');
+}
+
+async function deleteMemo(id){
+  if(!confirm('이 메모를 삭제할까요?')) return;
+  const { error } = await sb.from('seller_memos').delete().eq('id', id);
+  if(error){
+    alert(`삭제에 실패했어요: ${error.message || '알 수 없는 오류'}`);
+    return;
+  }
+  await loadMemos();
+  renderMemoList();
+}
 </script>
 </body>
 </html>
