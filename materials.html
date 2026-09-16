@@ -9,6 +9,34 @@
 <link href="shared.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="auth.js"></script>
+<style>
+  .filter-chip-row{ display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; flex-wrap:wrap; margin-bottom:14px; }
+  .filter-chip{ flex-shrink:0; white-space:nowrap; padding:6px 10px; font-size:12.5px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:14px; cursor:pointer; }
+  .filter-chip.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
+  .material-item{ border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:10px; background:#fff; cursor:pointer; }
+  .material-item:hover{ border-color:var(--accent); }
+  .reorder-pill{ display:inline-block; background:#FCEAE6; color:var(--error); font-size:11px; font-weight:500; padding:2px 7px; border-radius:3px; margin-left:6px; }
+  .price-delta.up{ color:var(--error); font-weight:500; }
+  .price-delta.down{ color:var(--teal); font-weight:500; }
+  .live-unit-price{ font-size:13px; color:var(--ink-soft); margin-top:6px; }
+  .live-unit-price b{ color:var(--ink); }
+  .form-section-title{ font-family:'Noto Serif KR', serif; font-size:15px; margin:0 0 12px; }
+  .detail-row{ display:flex; justify-content:space-between; padding:6px 0; font-size:13.5px; border-bottom:1px solid var(--line); gap:10px; }
+  .detail-row:last-child{ border-bottom:none; }
+  .detail-row span:first-child{ color:var(--ink-soft); flex-shrink:0; }
+  .detail-row span:last-child{ text-align:right; }
+  .sheet-overlay{
+    position:fixed; inset:0; background:rgba(35,40,31,0.45); z-index:200;
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  .sheet-panel{
+    background:#FBF9F2; width:100%; max-width:640px; border-radius:16px 16px 0 0;
+    padding:8px 20px 24px; min-height:30vh; max-height:82vh; overflow-y:auto; box-sizing:border-box;
+  }
+  .sheet-handle{ width:36px; height:4px; background:var(--line); border-radius:2px; margin:6px auto 14px; }
+  .sheet-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .sheet-header h3{ font-family:'Noto Serif KR', serif; font-size:16px; margin:0; }
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -19,17 +47,182 @@
       <p>원자재, 포장재, 택배자재 등의 가격과 구매정보를 관리해요.</p>
     </div>
     <div class="page-actions">
-      <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+      <button class="icon-btn" onclick="handleBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
       <button class="icon-btn" onclick="sharePage()" aria-label="공유하기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg></button>
     </div>
   </div>
 
-  <div class="card">
-    <span class="soon-badge">곧 추가돼요</span>
-    <h2>자재 등록, 구매 이력, 재구매 알림</h2>
-    <p class="hint">자재명·구매처·개당단가·재고를 등록하고, 구매할 때마다 이력을 쌓아 가격 변동과 재구매 시점을 확인할 수 있는 기능을 준비하고 있어요.</p>
+  <!-- ============ 목록 화면 ============ -->
+  <div id="listView">
+    <button type="button" class="primary" style="margin-bottom:14px;" onclick="showAddForm()">+ 자재 등록</button>
+    <div class="filter-chip-row" id="categoryChipRow"></div>
+    <div id="materialListWrap"><div class="empty-note">불러오는 중...</div></div>
   </div>
 
+  <!-- ============ 등록/수정 화면 ============ -->
+  <div id="formView" style="display:none;">
+    <div class="card">
+      <h2 id="formTitle">자재 등록</h2>
+
+      <p class="form-section-title" style="margin-top:6px;">기본정보</p>
+      <div class="field-block">
+        <label for="matName">자재명</label>
+        <input type="text" id="matName" placeholder="예: 택배봉투 A4">
+      </div>
+      <div class="row">
+        <div class="field-block">
+          <label for="matCategory">분류</label>
+          <select id="matCategory" onchange="handleCategoryChange(this)"></select>
+        </div>
+        <div class="field-block">
+          <label for="matOption">옵션 (선택)</label>
+          <input type="text" id="matOption" placeholder="예: 대형">
+        </div>
+      </div>
+      <div class="field-block" id="matCategoryNewWrap" style="display:none;">
+        <label for="matCategoryNew">새 분류 이름</label>
+        <input type="text" id="matCategoryNew" placeholder="새 분류 이름을 입력하세요">
+      </div>
+
+      <div id="purchaseInfoSection">
+        <p class="form-section-title">구매정보</p>
+        <div class="field-block">
+          <label for="matPurchaseDate">구매일</label>
+          <input type="date" id="matPurchaseDate">
+        </div>
+        <div class="row">
+          <div class="field-block">
+            <label for="matVendor">구매처</label>
+            <input type="text" id="matVendor" placeholder="예: 쿠팡">
+          </div>
+          <div class="field-block">
+            <label for="matPurchaseLink">구매 링크</label>
+            <input type="text" id="matPurchaseLink" placeholder="https://...">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field-block">
+            <label for="matPurchasePrice">구매가격</label>
+            <input type="number" id="matPurchasePrice" placeholder="12900" oninput="updateLiveUnitPrice()">
+          </div>
+          <div class="field-block">
+            <label for="matPurchaseQuantity">구매수량</label>
+            <input type="number" id="matPurchaseQuantity" placeholder="100" oninput="updateLiveUnitPrice()">
+          </div>
+        </div>
+        <div class="field-block">
+          <label for="matUnit">단위</label>
+          <input type="text" id="matUnit" placeholder="예: 장, 개, m, 롤" oninput="updateLiveUnitPrice()">
+        </div>
+        <div class="live-unit-price">개당단가: <b id="liveUnitPrice">-</b></div>
+      </div>
+
+      <p class="form-section-title" style="margin-top:16px;">규격</p>
+      <div class="field-block">
+        <label for="matSpec">사이즈/규격</label>
+        <input type="text" id="matSpec" placeholder="예: 25x35cm">
+      </div>
+
+      <p class="form-section-title">재고</p>
+      <div class="row">
+        <div class="field-block">
+          <label for="matStock">현재 재고</label>
+          <input type="number" id="matStock" placeholder="0">
+        </div>
+        <div class="field-block">
+          <label for="matThreshold">재구매 기준</label>
+          <input type="number" id="matThreshold" placeholder="0">
+        </div>
+      </div>
+
+      <p class="form-section-title">메모</p>
+      <div class="field-block">
+        <label for="matMemo">기타 메모</label>
+        <textarea id="matMemo" rows="3" placeholder="메모를 입력하세요"></textarea>
+      </div>
+
+      <div class="status" id="formStatus"></div>
+      <button type="button" class="primary" onclick="saveMaterial()">저장</button>
+      <button type="button" class="secondary" onclick="cancelForm()">취소</button>
+    </div>
+  </div>
+
+  <!-- ============ 상세 화면 ============ -->
+  <div id="detailView" style="display:none;">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+        <h2 id="detailName" style="margin:0;"></h2>
+        <span class="reorder-pill" id="detailReorderBadge" style="display:none;">재구매 필요</span>
+      </div>
+      <div class="detail-row"><span>분류</span><span id="detailCategory"></span></div>
+      <div class="detail-row"><span>규격</span><span id="detailSpec"></span></div>
+      <div class="detail-row"><span>재고 / 재구매기준</span><span id="detailStock"></span></div>
+      <div class="detail-row"><span>메모</span><span id="detailMemo"></span></div>
+      <a id="detailBuyLink" href="#" target="_blank" rel="noopener noreferrer" class="secondary" style="display:none; text-align:center; text-decoration:none; box-sizing:border-box;">구매하러 가기</a>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button type="button" class="mini-btn" style="flex:1;" onclick="showEditForm(detailId)">수정</button>
+        <button type="button" class="mini-btn danger" style="flex:1;" onclick="deleteMaterial()">삭제</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>구매 이력</h2>
+      <div class="hint" id="priceDelta" style="margin-top:0;"></div>
+      <button type="button" class="secondary" style="margin:10px 0;" onclick="openPurchaseSheet()">+ 구매 기록 추가</button>
+      <div id="purchaseHistoryList"></div>
+    </div>
+
+    <button type="button" class="secondary" onclick="switchView('list')">← 목록으로</button>
+  </div>
+
+</div>
+
+<!-- ============ 구매 기록 추가 바텀시트 ============ -->
+<div id="purchaseSheetOverlay" class="sheet-overlay" style="display:none;" onclick="closePurchaseSheet()">
+  <div class="sheet-panel" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h3>구매 기록 추가</h3>
+      <button type="button" class="icon-btn" onclick="closePurchaseSheet()" aria-label="닫기">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="field-block">
+      <label for="purchaseSheetDate">구매일</label>
+      <input type="date" id="purchaseSheetDate">
+    </div>
+    <div class="row">
+      <div class="field-block">
+        <label for="purchaseSheetVendor">구매처</label>
+        <input type="text" id="purchaseSheetVendor" placeholder="예: 쿠팡">
+      </div>
+      <div class="field-block">
+        <label for="purchaseSheetLink">구매 링크</label>
+        <input type="text" id="purchaseSheetLink" placeholder="https://...">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field-block">
+        <label for="purchaseSheetPrice">구매가격</label>
+        <input type="number" id="purchaseSheetPrice" placeholder="12900" oninput="updatePurchaseSheetLiveUnitPrice()">
+      </div>
+      <div class="field-block">
+        <label for="purchaseSheetQuantity">구매수량</label>
+        <input type="number" id="purchaseSheetQuantity" placeholder="100" oninput="updatePurchaseSheetLiveUnitPrice()">
+      </div>
+    </div>
+    <div class="field-block">
+      <label for="purchaseSheetUnit">단위</label>
+      <input type="text" id="purchaseSheetUnit" placeholder="예: 장, 개, m, 롤" oninput="updatePurchaseSheetLiveUnitPrice()">
+    </div>
+    <div class="live-unit-price">개당단가: <b id="purchaseSheetLiveUnitPrice">-</b></div>
+    <div class="field-block" style="margin-top:14px;">
+      <label for="purchaseSheetMemo">메모</label>
+      <textarea id="purchaseSheetMemo" rows="2" placeholder="메모를 입력하세요"></textarea>
+    </div>
+    <div class="status" id="purchaseSheetStatus"></div>
+    <button type="button" class="primary" style="margin-top:10px;" onclick="submitPurchaseRecord()">저장</button>
+  </div>
 </div>
 
 <nav class="bottom-nav"><div class="bottom-nav-inner">
@@ -41,7 +234,409 @@
 </div></nav>
 
 <script>
-requireAuth(function(){});
+let currentUser = null;
+let materials = [];
+let customCategories = [];
+let categoryFilter = 'all';
+let editingId = null;
+let detailId = null;
+let detailHistory = [];
+
+const DEFAULT_CATEGORIES = ['원자재', '포장재', '택배자재', '제작소모품', '사무용품', '기타'];
+
+requireAuth(function(user){
+  currentUser = user;
+  init();
+});
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+function formatWon(n){
+  return '₩' + Math.round(n || 0).toLocaleString('ko-KR');
+}
+
+function formatDateISO(d){
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function handleBack(){
+  const inList = document.getElementById('listView').style.display !== 'none';
+  if(!inList){ switchView('list'); return; }
+  goBack();
+}
+
+function switchView(view){
+  document.getElementById('listView').style.display = view === 'list' ? '' : 'none';
+  document.getElementById('formView').style.display = view === 'form' ? '' : 'none';
+  document.getElementById('detailView').style.display = view === 'detail' ? '' : 'none';
+  if(view === 'list'){ renderCategoryChips(); renderMaterialList(); }
+}
+
+async function init(){
+  await Promise.all([loadMaterials(), loadCategories()]);
+  const params = new URLSearchParams(location.search);
+  if(params.get('filter') === 'reorder') categoryFilter = '__reorder__';
+  renderCategoryChips();
+  renderMaterialList();
+}
+
+async function loadMaterials(){
+  const { data } = await sb.from('materials').select('*').eq('user_id', currentUser.id).order('name');
+  materials = data || [];
+}
+
+async function loadCategories(){
+  const { data } = await sb.from('material_categories').select('*').eq('user_id', currentUser.id).order('name');
+  customCategories = (data || []).map(c => c.name);
+}
+
+function allCategories(){
+  return DEFAULT_CATEGORIES.concat(customCategories.filter(c => !DEFAULT_CATEGORIES.includes(c)));
+}
+
+function needsReorder(m){
+  return (m.current_stock || 0) <= (m.reorder_threshold || 0);
+}
+
+function renderCategoryChips(){
+  const el = document.getElementById('categoryChipRow');
+  const reorderCount = materials.filter(needsReorder).length;
+  const chips = [
+    { key: 'all', label: '전체' },
+    { key: '__reorder__', label: reorderCount ? `재구매 필요 ${reorderCount}` : '재구매 필요' },
+  ].concat(allCategories().map(c => ({ key: c, label: c })));
+  el.innerHTML = chips.map(c => `<button type="button" class="filter-chip ${categoryFilter === c.key ? 'active' : ''}" onclick="setCategoryFilter('${c.key}')">${escapeHtml(c.label)}</button>`).join('');
+}
+
+function setCategoryFilter(key){
+  categoryFilter = key;
+  renderCategoryChips();
+  renderMaterialList();
+}
+
+function filteredMaterials(){
+  if(categoryFilter === 'all') return materials;
+  if(categoryFilter === '__reorder__') return materials.filter(needsReorder);
+  return materials.filter(m => m.category === categoryFilter);
+}
+
+function renderMaterialList(){
+  const wrap = document.getElementById('materialListWrap');
+  const list = filteredMaterials();
+  if(list.length === 0){
+    wrap.innerHTML = '<div class="empty-note">등록된 자재가 없어요.</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(m => `
+    <div class="material-item" onclick="openDetail('${m.id}')">
+      <div class="hi-top">
+        <span>${escapeHtml(m.name)}${m.option_name ? ' (' + escapeHtml(m.option_name) + ')' : ''}</span>
+        <span class="hi-date">${escapeHtml(m.category)}</span>
+      </div>
+      <div class="hi-input">${m.unit_price != null ? formatWon(m.unit_price) + '/' + escapeHtml(m.unit || '개') : '구매 정보 없음'}${needsReorder(m) ? '<span class="reorder-pill">재구매 필요</span>' : ''}</div>
+    </div>
+  `).join('');
+}
+
+// ============ 등록/수정 ============
+
+function showAddForm(){
+  editingId = null;
+  document.getElementById('formTitle').textContent = '자재 등록';
+  document.getElementById('purchaseInfoSection').style.display = '';
+  document.getElementById('matName').value = '';
+  document.getElementById('matOption').value = '';
+  document.getElementById('matSpec').value = '';
+  document.getElementById('matStock').value = '';
+  document.getElementById('matThreshold').value = '';
+  document.getElementById('matMemo').value = '';
+  document.getElementById('matPurchaseDate').value = formatDateISO(new Date());
+  document.getElementById('matVendor').value = '';
+  document.getElementById('matPurchaseLink').value = '';
+  document.getElementById('matPurchasePrice').value = '';
+  document.getElementById('matPurchaseQuantity').value = '';
+  document.getElementById('matUnit').value = '';
+  document.getElementById('liveUnitPrice').textContent = '-';
+  document.getElementById('formStatus').textContent = '';
+  populateCategorySelect(DEFAULT_CATEGORIES[0]);
+  switchView('form');
+}
+
+function showEditForm(id){
+  const m = materials.find(x => x.id === id);
+  if(!m) return;
+  editingId = id;
+  document.getElementById('formTitle').textContent = '자재 수정';
+  document.getElementById('purchaseInfoSection').style.display = 'none';
+  document.getElementById('matName').value = m.name || '';
+  document.getElementById('matOption').value = m.option_name || '';
+  document.getElementById('matSpec').value = m.spec || '';
+  document.getElementById('matStock').value = m.current_stock ?? 0;
+  document.getElementById('matThreshold').value = m.reorder_threshold ?? 0;
+  document.getElementById('matMemo').value = m.memo || '';
+  document.getElementById('formStatus').textContent = '';
+  populateCategorySelect(m.category);
+  switchView('form');
+}
+
+function populateCategorySelect(selected){
+  const sel = document.getElementById('matCategory');
+  sel.innerHTML = allCategories().map(c => `<option value="${escapeHtml(c)}" ${c === selected ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')
+    + '<option value="__new__">+ 새 분류 추가</option>';
+  document.getElementById('matCategoryNewWrap').style.display = 'none';
+  document.getElementById('matCategoryNew').value = '';
+}
+
+function handleCategoryChange(sel){
+  document.getElementById('matCategoryNewWrap').style.display = sel.value === '__new__' ? '' : 'none';
+}
+
+function updateLiveUnitPrice(){
+  const price = Number(document.getElementById('matPurchasePrice').value) || 0;
+  const qty = Number(document.getElementById('matPurchaseQuantity').value) || 0;
+  const unit = document.getElementById('matUnit').value.trim() || '개';
+  document.getElementById('liveUnitPrice').textContent = (price > 0 && qty > 0) ? `${formatWon(price / qty)}/${unit}` : '-';
+}
+
+function cancelForm(){
+  if(editingId){ openDetail(editingId); }
+  else { switchView('list'); }
+}
+
+async function saveMaterial(){
+  const statusEl = document.getElementById('formStatus');
+  const name = document.getElementById('matName').value.trim();
+  if(!name){
+    statusEl.textContent = '자재명을 입력해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+  let category = document.getElementById('matCategory').value;
+  if(category === '__new__'){
+    category = document.getElementById('matCategoryNew').value.trim();
+    if(!category){
+      statusEl.textContent = '새 분류 이름을 입력해주세요.';
+      statusEl.style.color = 'var(--error)';
+      return;
+    }
+  }
+
+  statusEl.textContent = '저장하는 중...';
+  statusEl.style.color = '';
+
+  if(!allCategories().includes(category)){
+    await sb.from('material_categories').insert({ user_id: currentUser.id, name: category });
+    customCategories.push(category);
+  }
+
+  const fields = {
+    name, category,
+    spec: document.getElementById('matSpec').value.trim(),
+    option_name: document.getElementById('matOption').value.trim(),
+    current_stock: Number(document.getElementById('matStock').value) || 0,
+    reorder_threshold: Number(document.getElementById('matThreshold').value) || 0,
+    memo: document.getElementById('matMemo').value.trim(),
+  };
+
+  if(editingId){
+    const { error } = await sb.from('materials').update(fields).eq('id', editingId);
+    if(error){
+      statusEl.textContent = `저장에 실패했어요: ${error.message || '알 수 없는 오류'}`;
+      statusEl.style.color = 'var(--error)';
+      return;
+    }
+    await loadMaterials();
+    openDetail(editingId);
+    return;
+  }
+
+  const purchasePrice = Number(document.getElementById('matPurchasePrice').value);
+  const purchaseQuantity = Number(document.getElementById('matPurchaseQuantity').value);
+  if(!purchasePrice || !purchaseQuantity){
+    statusEl.textContent = '구매가격과 구매수량을 입력해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  const { data: newMaterial, error: matError } = await sb.from('materials')
+    .insert(Object.assign({ user_id: currentUser.id }, fields)).select().single();
+  if(matError){
+    statusEl.textContent = `저장에 실패했어요: ${matError.message || '알 수 없는 오류'}`;
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  const { error: histError } = await sb.from('material_purchase_history').insert({
+    user_id: currentUser.id,
+    material_id: newMaterial.id,
+    purchase_date: document.getElementById('matPurchaseDate').value || formatDateISO(new Date()),
+    vendor: document.getElementById('matVendor').value.trim(),
+    purchase_link: document.getElementById('matPurchaseLink').value.trim(),
+    purchase_price: purchasePrice,
+    purchase_quantity: purchaseQuantity,
+    unit: document.getElementById('matUnit').value.trim(),
+    memo: '',
+  });
+  if(histError){
+    statusEl.textContent = `구매정보 저장에 실패했어요: ${histError.message || '알 수 없는 오류'}`;
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  await loadMaterials();
+  openDetail(newMaterial.id);
+}
+
+// ============ 상세 ============
+
+async function openDetail(id){
+  detailId = id;
+  const m = materials.find(x => x.id === id);
+  if(!m) return;
+  await loadDetailHistory(id);
+  renderDetail(m);
+  switchView('detail');
+}
+
+async function loadDetailHistory(id){
+  const { data } = await sb.from('material_purchase_history').select('*')
+    .eq('user_id', currentUser.id).eq('material_id', id)
+    .order('purchase_date', { ascending: false }).order('created_at', { ascending: false });
+  detailHistory = data || [];
+}
+
+function renderDetail(m){
+  document.getElementById('detailName').textContent = m.name + (m.option_name ? ` (${m.option_name})` : '');
+  document.getElementById('detailCategory').textContent = m.category;
+  document.getElementById('detailSpec').textContent = m.spec || '-';
+  document.getElementById('detailStock').textContent = `${m.current_stock ?? 0} / ${m.reorder_threshold ?? 0}`;
+  document.getElementById('detailMemo').textContent = m.memo || '-';
+  document.getElementById('detailReorderBadge').style.display = needsReorder(m) ? 'inline-block' : 'none';
+
+  const linkBtn = document.getElementById('detailBuyLink');
+  if(m.purchase_link){
+    linkBtn.style.display = 'block';
+    linkBtn.href = m.purchase_link;
+  } else {
+    linkBtn.style.display = 'none';
+  }
+
+  const deltaEl = document.getElementById('priceDelta');
+  if(detailHistory.length >= 2){
+    const latest = detailHistory[0].unit_price;
+    const prev = detailHistory[1].unit_price;
+    const diff = latest - prev;
+    const pct = prev ? (diff / prev * 100) : 0;
+    if(diff === 0){
+      deltaEl.textContent = '지난 구매와 단가 변동 없음';
+    } else {
+      const cls = diff > 0 ? 'up' : 'down';
+      const sign = diff > 0 ? '+' : '';
+      deltaEl.innerHTML = `지난 구매 대비 <span class="price-delta ${cls}">${sign}${formatWon(diff)} (${sign}${pct.toFixed(1)}%)</span>`;
+    }
+  } else {
+    deltaEl.textContent = '구매 이력이 더 쌓이면 가격 변동을 보여드려요.';
+  }
+
+  const histWrap = document.getElementById('purchaseHistoryList');
+  if(detailHistory.length === 0){
+    histWrap.innerHTML = '<div class="empty-note">구매 이력이 없어요.</div>';
+  } else {
+    histWrap.innerHTML = detailHistory.map(h => `
+      <div class="history-item">
+        <div class="hi-top">
+          <span>${escapeHtml(h.vendor || '-')}</span>
+          <span class="hi-date">${escapeHtml(h.purchase_date)}</span>
+        </div>
+        <div class="hi-input">${h.purchase_quantity}${escapeHtml(h.unit || '')} · ${formatWon(h.purchase_price)} · ${formatWon(h.unit_price)}/${escapeHtml(h.unit || '개')}${h.memo ? '<br>' + escapeHtml(h.memo) : ''}</div>
+      </div>
+    `).join('');
+  }
+}
+
+async function deleteMaterial(){
+  if(!detailId) return;
+  if(!confirm('이 자재를 삭제할까요? 구매 이력도 함께 삭제돼요.')) return;
+  const { error } = await sb.from('materials').delete().eq('id', detailId);
+  if(error){
+    const msg = String(error.message || '').toLowerCase();
+    if(error.code === '23503' || msg.includes('foreign key') || msg.includes('violat')){
+      alert('이 자재는 상품 원가 계산에 사용 중이라 삭제할 수 없어요. 먼저 상품별 원가 관리에서 연결을 해제해주세요.');
+    } else {
+      alert(`삭제에 실패했어요: ${error.message || '알 수 없는 오류'}`);
+    }
+    return;
+  }
+  await loadMaterials();
+  switchView('list');
+}
+
+// ============ 구매 기록 추가 바텀시트 ============
+
+function openPurchaseSheet(){
+  document.getElementById('purchaseSheetDate').value = formatDateISO(new Date());
+  document.getElementById('purchaseSheetVendor').value = '';
+  document.getElementById('purchaseSheetLink').value = '';
+  document.getElementById('purchaseSheetPrice').value = '';
+  document.getElementById('purchaseSheetQuantity').value = '';
+  document.getElementById('purchaseSheetUnit').value = '';
+  document.getElementById('purchaseSheetMemo').value = '';
+  document.getElementById('purchaseSheetLiveUnitPrice').textContent = '-';
+  document.getElementById('purchaseSheetStatus').textContent = '';
+  document.getElementById('purchaseSheetOverlay').style.display = 'flex';
+}
+
+function closePurchaseSheet(){
+  document.getElementById('purchaseSheetOverlay').style.display = 'none';
+}
+
+function updatePurchaseSheetLiveUnitPrice(){
+  const price = Number(document.getElementById('purchaseSheetPrice').value) || 0;
+  const qty = Number(document.getElementById('purchaseSheetQuantity').value) || 0;
+  const unit = document.getElementById('purchaseSheetUnit').value.trim() || '개';
+  document.getElementById('purchaseSheetLiveUnitPrice').textContent = (price > 0 && qty > 0) ? `${formatWon(price / qty)}/${unit}` : '-';
+}
+
+async function submitPurchaseRecord(){
+  const statusEl = document.getElementById('purchaseSheetStatus');
+  const price = Number(document.getElementById('purchaseSheetPrice').value);
+  const qty = Number(document.getElementById('purchaseSheetQuantity').value);
+  if(!price || !qty){
+    statusEl.textContent = '구매가격과 구매수량을 입력해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  statusEl.textContent = '저장하는 중...';
+  statusEl.style.color = '';
+
+  const { error } = await sb.from('material_purchase_history').insert({
+    user_id: currentUser.id,
+    material_id: detailId,
+    purchase_date: document.getElementById('purchaseSheetDate').value || formatDateISO(new Date()),
+    vendor: document.getElementById('purchaseSheetVendor').value.trim(),
+    purchase_link: document.getElementById('purchaseSheetLink').value.trim(),
+    purchase_price: price,
+    purchase_quantity: qty,
+    unit: document.getElementById('purchaseSheetUnit').value.trim(),
+    memo: document.getElementById('purchaseSheetMemo').value.trim(),
+  });
+  if(error){
+    statusEl.textContent = `저장에 실패했어요: ${error.message || '알 수 없는 오류'}`;
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+
+  closePurchaseSheet();
+  await loadMaterials();
+  const m = materials.find(x => x.id === detailId);
+  await loadDetailHistory(detailId);
+  renderDetail(m);
+}
 </script>
 </body>
 </html>
