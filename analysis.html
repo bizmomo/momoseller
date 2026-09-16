@@ -10,6 +10,13 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="auth.js"></script>
 <style>
+  .page-tab-row{ display:flex; gap:8px; margin-bottom:16px; }
+  .page-tab{
+    flex:1; text-align:center; padding:10px 4px; font-size:13.5px; font-weight:500;
+    border:1px solid var(--line); border-radius:3px; background:#fff; color:var(--ink-soft);
+    text-decoration:none; cursor:pointer;
+  }
+  .page-tab.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); }
   .tab-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
   .tab-btn{ flex:1; text-align:center; padding:9px 4px; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:3px; cursor:pointer; }
   .tab-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
@@ -99,6 +106,11 @@
       <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
       <button class="icon-btn" onclick="sharePage()" aria-label="공유하기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg></button>
     </div>
+  </div>
+
+  <div class="page-tab-row">
+    <a href="settlement.html" class="page-tab">정산</a>
+    <a href="analysis.html" class="page-tab active">통계</a>
   </div>
 
   <div class="tab-row">
@@ -249,8 +261,8 @@
 <nav class="bottom-nav"><div class="bottom-nav-inner">
   <a href="home.html" class="nav-item"><span class="nav-icon">🏠</span><span>홈</span></a>
   <a href="index.html" class="nav-item"><span class="nav-icon">✍️</span><span>상품등록</span></a>
-  <a href="settlement.html" class="nav-item"><span class="nav-icon">📊</span><span>정산</span></a>
-  <a href="analysis.html" class="nav-item active"><span class="nav-icon">📈</span><span>분석</span></a>
+  <a href="settlement.html" class="nav-item active"><span class="nav-icon">📊</span><span>정산분석</span></a>
+  <a href="management.html" class="nav-item"><span class="nav-icon">📦</span><span>관리</span></a>
   <a href="my.html" class="nav-item"><span class="nav-icon">👤</span><span>마이</span></a>
 </div></nav>
 

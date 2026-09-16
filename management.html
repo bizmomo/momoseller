@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>관리 | 모모셀러</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="shared.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
+<style>
+  .stat-box.warn .stat-value{ color:var(--error); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div>
+      <h1>관리</h1>
+      <p>판매에 필요한 자재와 원가를 관리해요.</p>
+    </div>
+    <div class="page-actions">
+      <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+      <button class="icon-btn" onclick="sharePage()" aria-label="공유하기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg></button>
+    </div>
+  </div>
+
+  <div class="stat-grid">
+    <a href="materials.html" style="text-decoration:none;" class="stat-box">
+      <div class="stat-label">등록 자재</div>
+      <div class="stat-value" id="statMaterials">-</div>
+    </a>
+    <a href="materials.html?filter=reorder" style="text-decoration:none;" class="stat-box" id="statReorderBox">
+      <div class="stat-label">재구매 필요</div>
+      <div class="stat-value" id="statReorder">-</div>
+    </a>
+    <a href="product-costs.html" style="text-decoration:none;" class="stat-box">
+      <div class="stat-label">등록 상품 원가</div>
+      <div class="stat-value" id="statProducts">-</div>
+    </a>
+  </div>
+
+  <div class="menu-list">
+    <a href="materials.html" class="menu-item">
+      <span>자재·구매 관리</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+    </a>
+    <a href="product-costs.html" class="menu-item">
+      <span>상품별 원가 관리</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+    </a>
+    <a href="memos.html" class="menu-item">
+      <span>셀러 메모</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+    </a>
+  </div>
+
+  <div class="card">
+    <h2>최근 구매</h2>
+    <div id="recentPurchaseList"><div class="empty-note">불러오는 중...</div></div>
+  </div>
+
+</div>
+
+<nav class="bottom-nav"><div class="bottom-nav-inner">
+  <a href="home.html" class="nav-item"><span class="nav-icon">🏠</span><span>홈</span></a>
+  <a href="index.html" class="nav-item"><span class="nav-icon">✍️</span><span>상품등록</span></a>
+  <a href="settlement.html" class="nav-item"><span class="nav-icon">📊</span><span>정산분석</span></a>
+  <a href="management.html" class="nav-item active"><span class="nav-icon">📦</span><span>관리</span></a>
+  <a href="my.html" class="nav-item"><span class="nav-icon">👤</span><span>마이</span></a>
+</div></nav>
+
+<script>
+let currentUser = null;
+
+requireAuth(function(user){
+  currentUser = user;
+  init();
+});
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function formatWon(n){
+  return '₩' + Math.round(n || 0).toLocaleString('ko-KR');
+}
+
+async function init(){
+  await Promise.all([loadStats(), loadRecentPurchases()]);
+}
+
+async function loadStats(){
+  const [materialsRes, productsRes, stockRes] = await Promise.all([
+    sb.from('materials').select('id', { count: 'exact', head: true }).eq('user_id', currentUser.id),
+    sb.from('products').select('id', { count: 'exact', head: true }).eq('user_id', currentUser.id),
+    sb.from('materials').select('current_stock, reorder_threshold').eq('user_id', currentUser.id),
+  ]);
+
+  document.getElementById('statMaterials').textContent = materialsRes.count || 0;
+  document.getElementById('statProducts').textContent = productsRes.count || 0;
+
+  // current_stock <= reorder_threshold 비교는 PostgREST 필터로 컬럼끼리 바로
+  // 비교할 수 없어서(값 하나만 비교 가능) 재고/기준을 받아와 여기서 센다.
+  const stockRows = stockRes.data || [];
+  const reorderCount = stockRows.filter(r => (r.current_stock || 0) <= (r.reorder_threshold || 0)).length;
+  document.getElementById('statReorder').textContent = reorderCount;
+  document.getElementById('statReorderBox').classList.toggle('warn', reorderCount > 0);
+}
+
+async function loadRecentPurchases(){
+  const listEl = document.getElementById('recentPurchaseList');
+  const { data: history, error } = await sb.from('material_purchase_history')
+    .select('*').eq('user_id', currentUser.id)
+    .order('purchase_date', { ascending: false }).order('created_at', { ascending: false })
+    .limit(5);
+
+  if(error){
+    listEl.innerHTML = `<div class="empty-note">불러오기 실패: ${escapeHtml(error.message)}</div>`;
+    return;
+  }
+  if(!history || history.length === 0){
+    listEl.innerHTML = '<div class="empty-note">아직 구매 이력이 없어요.</div>';
+    return;
+  }
+
+  const materialIds = Array.from(new Set(history.map(h => h.material_id)));
+  const { data: materials } = await sb.from('materials').select('id, name, unit').eq('user_id', currentUser.id).in('id', materialIds);
+  const materialById = {};
+  (materials || []).forEach(m => { materialById[m.id] = m; });
+
+  listEl.innerHTML = history.map(h => {
+    const material = materialById[h.material_id];
+    const name = material ? material.name : '(삭제된 자재)';
+    const unit = h.unit || (material && material.unit) || '';
+    const dateStr = (h.purchase_date || '').slice(5).replace('-', '/');
+    return `
+      <div class="history-item">
+        <div class="hi-top">
+          <span>${escapeHtml(name)}</span>
+          <span class="hi-date">${escapeHtml(dateStr)}</span>
+        </div>
+        <div class="hi-input">${formatWon(h.purchase_price)} · ${formatWon(h.unit_price)}/${escapeHtml(unit)}</div>
+      </div>
+    `;
+  }).join('');
+}
+</script>
+</body>
+</html>
