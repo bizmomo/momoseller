@@ -9,6 +9,29 @@
 <link href="shared.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="auth.js"></script>
+<style>
+  .product-item{ border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:10px; background:#fff; cursor:pointer; }
+  .product-item:hover{ border-color:var(--accent); }
+  .material-item{ border:1px solid var(--line); border-radius:4px; padding:10px 12px; margin-bottom:8px; background:#fff; cursor:pointer; }
+  .material-item:hover{ border-color:var(--accent); }
+  .detail-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; font-size:13.5px; border-bottom:1px solid var(--line); gap:10px; }
+  .detail-row:last-child{ border-bottom:none; }
+  .detail-row span:first-child{ flex:1; min-width:0; }
+  .detail-row span:last-child{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  .total-row{ font-weight:700; font-size:16px; }
+  .quick-pick-row{ display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 10px; }
+  .sheet-overlay{
+    position:fixed; inset:0; background:rgba(35,40,31,0.45); z-index:200;
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  .sheet-panel{
+    background:#FBF9F2; width:100%; max-width:640px; border-radius:16px 16px 0 0;
+    padding:8px 20px 24px; min-height:30vh; max-height:82vh; overflow-y:auto; box-sizing:border-box;
+  }
+  .sheet-handle{ width:36px; height:4px; background:var(--line); border-radius:2px; margin:6px auto 14px; }
+  .sheet-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .sheet-header h3{ font-family:'Noto Serif KR', serif; font-size:16px; margin:0; }
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -19,17 +42,117 @@
       <p>상품에 사용되는 자재를 연결하고 실제 원가를 계산해요.</p>
     </div>
     <div class="page-actions">
-      <button class="icon-btn" onclick="goBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+      <button class="icon-btn" onclick="handleBack()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
       <button class="icon-btn" onclick="sharePage()" aria-label="공유하기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg></button>
     </div>
   </div>
 
-  <div class="card">
-    <span class="soon-badge">곧 추가돼요</span>
-    <h2>상품에 자재 연결, 실제 원가 자동 계산</h2>
-    <p class="hint">상품마다 사용하는 자재와 수량을 연결하면 단가×수량을 자동으로 더해 자재원가를 계산하고, 인쇄비·외주비 같은 기타 제작비까지 더한 상품 실제 원가를 보여주는 기능을 준비하고 있어요.</p>
+  <!-- ============ 목록 화면 ============ -->
+  <div id="listView">
+    <button type="button" class="primary" style="margin-bottom:14px;" onclick="showAddForm()">+ 상품 등록</button>
+    <div id="productListWrap"><div class="empty-note">불러오는 중...</div></div>
   </div>
 
+  <!-- ============ 등록 화면 ============ -->
+  <div id="formView" style="display:none;">
+    <div class="card">
+      <h2>상품 등록</h2>
+      <div class="field-block">
+        <label for="prodName">상품명</label>
+        <input type="text" id="prodName" list="settlementProductNames" placeholder="상품명을 입력하세요 (정산에 등록된 상품명 자동완성)">
+        <datalist id="settlementProductNames"></datalist>
+      </div>
+      <div class="field-block">
+        <label for="prodOption">옵션 (선택)</label>
+        <input type="text" id="prodOption" placeholder="예: 대형">
+      </div>
+      <div class="status" id="formStatus"></div>
+      <button type="button" class="primary" onclick="saveProduct()">저장</button>
+      <button type="button" class="secondary" onclick="switchView('list')">취소</button>
+    </div>
+  </div>
+
+  <!-- ============ 상세 화면 ============ -->
+  <div id="detailView" style="display:none;">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+        <h2 id="detailProductName" style="margin:0;"></h2>
+      </div>
+      <button type="button" class="mini-btn danger" style="margin-top:10px;" onclick="deleteProduct()">상품 삭제</button>
+    </div>
+
+    <div class="card">
+      <h2>사용 자재</h2>
+      <div class="empty-note" id="materialsEmptyNote" style="display:none;">
+        등록된 자재가 없어요. <a href="materials.html">자재·구매 관리</a>에서 먼저 등록해주세요.
+      </div>
+      <div id="productMaterialList"></div>
+      <button type="button" class="secondary" id="addMaterialBtn" onclick="openMaterialPicker()">+ 자재 추가</button>
+    </div>
+
+    <div class="card">
+      <h2>기타 제작비용</h2>
+      <div id="productExtraCostList"></div>
+      <div class="quick-pick-row">
+        <button type="button" class="mini-btn" onclick="setExtraCostLabel('인쇄비')">인쇄비</button>
+        <button type="button" class="mini-btn" onclick="setExtraCostLabel('커팅비')">커팅비</button>
+        <button type="button" class="mini-btn" onclick="setExtraCostLabel('외주비')">외주비</button>
+        <button type="button" class="mini-btn" onclick="setExtraCostLabel('포장 작업비')">포장 작업비</button>
+        <button type="button" class="mini-btn" onclick="setExtraCostLabel('기타 제작비')">기타 제작비</button>
+      </div>
+      <div class="row">
+        <div class="field-block">
+          <label for="extraCostLabel">비용 이름</label>
+          <input type="text" id="extraCostLabel" placeholder="예: 인쇄비">
+        </div>
+        <div class="field-block">
+          <label for="extraCostAmount">금액</label>
+          <input type="number" id="extraCostAmount" placeholder="0">
+        </div>
+      </div>
+      <div class="status" id="extraCostStatus"></div>
+      <button type="button" class="secondary" onclick="addExtraCost()">+ 비용 추가</button>
+    </div>
+
+    <div class="card">
+      <div class="detail-row"><span>자재비</span><span id="totalMaterialCost"></span></div>
+      <div class="detail-row"><span>기타 제작비</span><span id="totalExtraCost"></span></div>
+      <div class="detail-row total-row"><span>상품 실제원가</span><span id="totalProductCost"></span></div>
+    </div>
+
+    <button type="button" class="secondary" onclick="switchView('list')">← 목록으로</button>
+  </div>
+
+</div>
+
+<!-- ============ 자재 추가 바텀시트 ============ -->
+<div id="materialPickerOverlay" class="sheet-overlay" style="display:none;" onclick="closeMaterialPicker()">
+  <div class="sheet-panel" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h3>자재 추가</h3>
+      <button type="button" class="icon-btn" onclick="closeMaterialPicker()" aria-label="닫기">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+
+    <div id="materialPickerListStep">
+      <div class="field-block">
+        <input type="text" id="materialPickerSearch" placeholder="자재 검색" oninput="renderMaterialPickerList()">
+      </div>
+      <div id="materialPickerList"></div>
+    </div>
+
+    <div id="materialPickerQtyStep" style="display:none;">
+      <div class="field-block">
+        <label id="materialPickerSelectedName" style="font-size:14.5px; color:var(--ink); font-weight:500;"></label>
+        <input type="number" id="materialPickerQty" step="0.001" placeholder="사용 수량 (소수 가능, 예: 0.5)" oninput="updateMaterialPickerLineCost()">
+      </div>
+      <div class="hint" id="materialPickerLineCost" style="margin-top:0;"></div>
+      <button type="button" class="primary" style="margin-top:10px;" onclick="confirmAddMaterial()">추가</button>
+      <button type="button" class="secondary" onclick="backToMaterialList()">← 다시 검색</button>
+    </div>
+  </div>
 </div>
 
 <nav class="bottom-nav"><div class="bottom-nav-inner">
@@ -41,7 +164,332 @@
 </div></nav>
 
 <script>
-requireAuth(function(){});
+let currentUser = null;
+let products = [];
+let materials = [];
+let allProductMaterials = [];
+let allProductExtraCosts = [];
+let detailId = null;
+let materialPickerSelectedId = null;
+
+requireAuth(function(user){
+  currentUser = user;
+  init();
+});
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+function formatWon(n){
+  return '₩' + Math.round(n || 0).toLocaleString('ko-KR');
+}
+
+function handleBack(){
+  const inList = document.getElementById('listView').style.display !== 'none';
+  if(!inList){ switchView('list'); return; }
+  goBack();
+}
+
+function switchView(view){
+  document.getElementById('listView').style.display = view === 'list' ? '' : 'none';
+  document.getElementById('formView').style.display = view === 'form' ? '' : 'none';
+  document.getElementById('detailView').style.display = view === 'detail' ? '' : 'none';
+  if(view === 'list') renderProductList();
+}
+
+async function init(){
+  await loadProducts();
+  await loadSettlementProductNames();
+  renderProductList();
+}
+
+async function loadProducts(){
+  const [productsRes, materialsRes, pmRes, pecRes] = await Promise.all([
+    sb.from('products').select('*').eq('user_id', currentUser.id).order('name'),
+    sb.from('materials').select('*').eq('user_id', currentUser.id).order('name'),
+    sb.from('product_materials').select('*').eq('user_id', currentUser.id),
+    sb.from('product_extra_costs').select('*').eq('user_id', currentUser.id),
+  ]);
+  products = productsRes.data || [];
+  materials = materialsRes.data || [];
+  allProductMaterials = pmRes.data || [];
+  allProductExtraCosts = pecRes.data || [];
+}
+
+async function loadSettlementProductNames(){
+  const { data } = await sb.from('settlement_orders').select('product_name').eq('user_id', currentUser.id);
+  const names = Array.from(new Set((data || []).map(r => r.product_name).filter(Boolean)));
+  document.getElementById('settlementProductNames').innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+}
+
+function materialById(id){
+  return materials.find(m => m.id === id);
+}
+
+function computeProductCost(productId){
+  const pms = allProductMaterials.filter(pm => pm.product_id === productId);
+  const materialCost = pms.reduce((s, pm) => {
+    const m = materialById(pm.material_id);
+    return s + (m && m.unit_price != null ? m.unit_price * pm.quantity : 0);
+  }, 0);
+  const pecs = allProductExtraCosts.filter(pec => pec.product_id === productId);
+  const extraCost = pecs.reduce((s, pec) => s + (pec.amount || 0), 0);
+  return { materialCost, extraCost, total: materialCost + extraCost };
+}
+
+function renderProductList(){
+  const wrap = document.getElementById('productListWrap');
+  if(products.length === 0){
+    wrap.innerHTML = '<div class="empty-note">등록된 상품이 없어요.</div>';
+    return;
+  }
+  wrap.innerHTML = products.map(p => {
+    const cost = computeProductCost(p.id);
+    return `
+      <div class="product-item" onclick="openDetail('${p.id}')">
+        <div class="hi-top">
+          <span>${escapeHtml(p.name)}${p.option_name ? ' (' + escapeHtml(p.option_name) + ')' : ''}</span>
+        </div>
+        <div class="hi-input">상품 실제원가 <b>${formatWon(cost.total)}</b></div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ============ 등록 ============
+
+function showAddForm(){
+  document.getElementById('prodName').value = '';
+  document.getElementById('prodOption').value = '';
+  document.getElementById('formStatus').textContent = '';
+  switchView('form');
+}
+
+async function saveProduct(){
+  const statusEl = document.getElementById('formStatus');
+  const name = document.getElementById('prodName').value.trim();
+  if(!name){
+    statusEl.textContent = '상품명을 입력해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+  const option_name = document.getElementById('prodOption').value.trim();
+  statusEl.textContent = '저장하는 중...';
+  statusEl.style.color = '';
+
+  const { data, error } = await sb.from('products')
+    .insert({ user_id: currentUser.id, name, option_name }).select().single();
+  if(error){
+    statusEl.textContent = `저장에 실패했어요: ${error.message || '알 수 없는 오류'}`;
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+  await loadProducts();
+  openDetail(data.id);
+}
+
+// ============ 상세 ============
+
+function openDetail(id){
+  detailId = id;
+  const p = products.find(x => x.id === id);
+  if(!p) return;
+  document.getElementById('detailProductName').textContent = p.name + (p.option_name ? ` (${p.option_name})` : '');
+  document.getElementById('materialsEmptyNote').style.display = materials.length === 0 ? 'block' : 'none';
+  document.getElementById('addMaterialBtn').style.display = materials.length === 0 ? 'none' : '';
+  document.getElementById('extraCostLabel').value = '';
+  document.getElementById('extraCostAmount').value = '';
+  document.getElementById('extraCostStatus').textContent = '';
+  renderProductMaterials();
+  renderProductExtraCosts();
+  refreshTotals();
+  switchView('detail');
+}
+
+function renderProductMaterials(){
+  const pms = allProductMaterials.filter(pm => pm.product_id === detailId);
+  const wrap = document.getElementById('productMaterialList');
+  if(pms.length === 0){
+    wrap.innerHTML = '<div class="empty-note">연결된 자재가 없어요.</div>';
+    return;
+  }
+  wrap.innerHTML = pms.map(pm => {
+    const m = materialById(pm.material_id);
+    const lineCost = m && m.unit_price != null ? m.unit_price * pm.quantity : 0;
+    return `
+      <div class="detail-row">
+        <span>${escapeHtml(m ? m.name : '(삭제된 자재)')} × ${pm.quantity}${m ? escapeHtml(m.unit || '') : ''}</span>
+        <span>${formatWon(lineCost)}<button type="button" class="mini-btn danger" onclick="removeProductMaterial('${pm.id}')">삭제</button></span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderProductExtraCosts(){
+  const pecs = allProductExtraCosts.filter(pec => pec.product_id === detailId);
+  const wrap = document.getElementById('productExtraCostList');
+  if(pecs.length === 0){
+    wrap.innerHTML = '<div class="empty-note">추가된 비용이 없어요.</div>';
+    return;
+  }
+  wrap.innerHTML = pecs.map(pec => `
+    <div class="detail-row">
+      <span>${escapeHtml(pec.label)}</span>
+      <span>${formatWon(pec.amount)}<button type="button" class="mini-btn danger" onclick="removeExtraCost('${pec.id}')">삭제</button></span>
+    </div>
+  `).join('');
+}
+
+function refreshTotals(){
+  const cost = computeProductCost(detailId);
+  document.getElementById('totalMaterialCost').textContent = formatWon(cost.materialCost);
+  document.getElementById('totalExtraCost').textContent = formatWon(cost.extraCost);
+  document.getElementById('totalProductCost').textContent = formatWon(cost.total);
+}
+
+async function deleteProduct(){
+  if(!detailId) return;
+  if(!confirm('이 상품을 삭제할까요? 연결된 자재·비용 정보도 함께 삭제돼요.')) return;
+  const { error } = await sb.from('products').delete().eq('id', detailId);
+  if(error){
+    alert(`삭제에 실패했어요: ${error.message || '알 수 없는 오류'}`);
+    return;
+  }
+  await loadProducts();
+  switchView('list');
+}
+
+// ============ 기타 제작비용 ============
+
+function setExtraCostLabel(label){
+  document.getElementById('extraCostLabel').value = label;
+}
+
+async function addExtraCost(){
+  const statusEl = document.getElementById('extraCostStatus');
+  const label = document.getElementById('extraCostLabel').value.trim();
+  const amount = Number(document.getElementById('extraCostAmount').value);
+  if(!label){
+    statusEl.textContent = '비용 이름을 입력해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+  if(!amount || amount <= 0){
+    statusEl.textContent = '금액을 입력해주세요.';
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+  statusEl.textContent = '';
+  const { error } = await sb.from('product_extra_costs').insert({ user_id: currentUser.id, product_id: detailId, label, amount });
+  if(error){
+    statusEl.textContent = `추가에 실패했어요: ${error.message || '알 수 없는 오류'}`;
+    statusEl.style.color = 'var(--error)';
+    return;
+  }
+  document.getElementById('extraCostLabel').value = '';
+  document.getElementById('extraCostAmount').value = '';
+  await loadProducts();
+  renderProductExtraCosts();
+  refreshTotals();
+}
+
+async function removeExtraCost(id){
+  const { error } = await sb.from('product_extra_costs').delete().eq('id', id);
+  if(error){
+    alert(`삭제에 실패했어요: ${error.message || '알 수 없는 오류'}`);
+    return;
+  }
+  await loadProducts();
+  renderProductExtraCosts();
+  refreshTotals();
+}
+
+// ============ 자재 추가 바텀시트 ============
+
+function openMaterialPicker(){
+  if(materials.length === 0) return;
+  materialPickerSelectedId = null;
+  document.getElementById('materialPickerSearch').value = '';
+  document.getElementById('materialPickerListStep').style.display = '';
+  document.getElementById('materialPickerQtyStep').style.display = 'none';
+  renderMaterialPickerList();
+  document.getElementById('materialPickerOverlay').style.display = 'flex';
+}
+
+function closeMaterialPicker(){
+  document.getElementById('materialPickerOverlay').style.display = 'none';
+}
+
+function renderMaterialPickerList(){
+  const search = document.getElementById('materialPickerSearch').value.trim().toLowerCase();
+  const attachedIds = new Set(allProductMaterials.filter(pm => pm.product_id === detailId).map(pm => pm.material_id));
+  const list = materials.filter(m => !attachedIds.has(m.id) && (!search || m.name.toLowerCase().includes(search)));
+  const wrap = document.getElementById('materialPickerList');
+  if(list.length === 0){
+    wrap.innerHTML = '<div class="empty-note">연결할 수 있는 자재가 없어요.</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(m => `
+    <div class="material-item" onclick="selectMaterialForProduct('${m.id}')">
+      <div class="hi-top"><span>${escapeHtml(m.name)}</span><span class="hi-date">${escapeHtml(m.category)}</span></div>
+      <div class="hi-input">${m.unit_price != null ? formatWon(m.unit_price) + '/' + escapeHtml(m.unit || '개') : '구매 정보 없음'}</div>
+    </div>
+  `).join('');
+}
+
+function selectMaterialForProduct(id){
+  materialPickerSelectedId = id;
+  const m = materialById(id);
+  document.getElementById('materialPickerSelectedName').textContent = m.name;
+  document.getElementById('materialPickerQty').value = '';
+  updateMaterialPickerLineCost();
+  document.getElementById('materialPickerListStep').style.display = 'none';
+  document.getElementById('materialPickerQtyStep').style.display = '';
+}
+
+function backToMaterialList(){
+  document.getElementById('materialPickerListStep').style.display = '';
+  document.getElementById('materialPickerQtyStep').style.display = 'none';
+}
+
+function updateMaterialPickerLineCost(){
+  const qty = Number(document.getElementById('materialPickerQty').value) || 0;
+  const m = materialById(materialPickerSelectedId);
+  const lineCost = m && m.unit_price != null ? m.unit_price * qty : 0;
+  document.getElementById('materialPickerLineCost').textContent = qty > 0 ? `예상 원가: ${formatWon(lineCost)}` : '';
+}
+
+async function confirmAddMaterial(){
+  const qty = Number(document.getElementById('materialPickerQty').value);
+  if(!qty || qty <= 0){
+    alert('사용 수량을 입력해주세요.');
+    return;
+  }
+  const { error } = await sb.from('product_materials')
+    .insert({ user_id: currentUser.id, product_id: detailId, material_id: materialPickerSelectedId, quantity: qty });
+  if(error){
+    alert(`추가에 실패했어요: ${error.message || '알 수 없는 오류'}`);
+    return;
+  }
+  closeMaterialPicker();
+  await loadProducts();
+  renderProductMaterials();
+  refreshTotals();
+}
+
+async function removeProductMaterial(id){
+  const { error } = await sb.from('product_materials').delete().eq('id', id);
+  if(error){
+    alert(`삭제에 실패했어요: ${error.message || '알 수 없는 오류'}`);
+    return;
+  }
+  await loadProducts();
+  renderProductMaterials();
+  refreshTotals();
+}
 </script>
 </body>
 </html>
