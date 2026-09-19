@@ -22,6 +22,18 @@
   .chart-bar-label{ position:absolute; top:-19px; left:50%; transform:translateX(-50%); font-size:11px; font-weight:700; color:var(--ink); white-space:nowrap; }
   .chart-axis{ position:relative; height:14px; margin-top:6px; }
   .chart-axis-tick{ position:absolute; top:0; font-size:10px; color:var(--ink-soft); white-space:nowrap; }
+  .product-row{ display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); }
+  .product-row:last-child{ border-bottom:none; }
+  .product-row .rank{ font-family:'Noto Serif KR', serif; font-weight:700; font-size:15px; color:var(--ink-soft); width:18px; flex-shrink:0; }
+  .product-row .pname{ flex:1; font-size:13.5px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .product-row .pnums{ text-align:right; flex-shrink:0; }
+  .product-row .pnums .main{ font-size:13.5px; font-weight:700; }
+  .product-row .pnums .sub{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
+  .platform-row{ padding:14px 0; border-bottom:1px solid var(--line); }
+  .platform-row:last-child{ border-bottom:none; }
+  .platform-row-title{ font-size:14px; font-weight:700; margin-bottom:8px; }
+  .platform-row-nums{ display:flex; flex-wrap:wrap; gap:12px 22px; font-size:12px; color:var(--ink-soft); }
+  .platform-row-nums b{ color:var(--ink); font-size:13.5px; display:block; margin-top:2px; }
 </style>
 </head>
 <body>
@@ -111,8 +123,38 @@
       </div>
     </div>
 
-    <div id="rankTab" style="display:none;"><div class="card"><span class="soon-badge">곧 추가돼요</span></div></div>
-    <div id="inflowTab" style="display:none;"><div class="card"><span class="soon-badge">곧 추가돼요</span></div></div>
+    <div id="rankTab" style="display:none;">
+      <div class="card">
+        <h2>방문수 순위 TOP 10</h2>
+        <div id="rankVisitsList"></div>
+        <div class="empty-note" id="rankVisitsEmpty" style="display:none;">아직 데이터가 없어요.</div>
+      </div>
+      <div class="card">
+        <h2>매출순위 TOP 10</h2>
+        <div id="rankRevenueList"></div>
+        <div class="empty-note" id="rankRevenueEmpty" style="display:none;">아직 데이터가 없어요.</div>
+      </div>
+      <div class="card">
+        <h2>검색경로별 매출순위</h2>
+        <p class="hint" style="margin-top:-4px;">첫 방문 유입경로 기준으로 나눴어요.</p>
+        <h3 style="font-size:13px; margin:16px 0 8px; color:var(--ink);">검색유입</h3>
+        <div id="rankRefSearchList"></div>
+        <h3 style="font-size:13px; margin:16px 0 8px; color:var(--ink);">사이트유입</h3>
+        <div id="rankRefSiteList"></div>
+        <h3 style="font-size:13px; margin:16px 0 8px; color:var(--ink);">공유유입</h3>
+        <div id="rankRefShareList"></div>
+      </div>
+    </div>
+    <div id="inflowTab" style="display:none;">
+      <div class="card">
+        <h2>기기 유형 분포</h2>
+        <div id="deviceBreakdown"></div>
+      </div>
+      <div class="card">
+        <h2>유입 경로</h2>
+        <div id="refBreakdown"></div>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -139,7 +181,7 @@ async function checkAdminAccess(){
   loadMembers();
 }
 
-let membersLoaded = false, statsLoaded = false;
+let membersLoaded = false, statsLoaded = false, rankLoaded = false, inflowLoaded = false;
 let statsMetric = 'signups', statsPeriodDays = 30;
 
 function formatDateISO(d){
@@ -152,6 +194,130 @@ function setDashTab(tab){
   });
   document.querySelectorAll('.dash-tab-row .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   if(tab === 'stats' && !statsLoaded) loadStatsTrend();
+  if(tab === 'rank' && !rankLoaded) loadRankings();
+  if(tab === 'inflow' && !inflowLoaded) loadInflow();
+}
+
+function formatWon(n){ return '₩' + Math.round(n || 0).toLocaleString('ko-KR'); }
+
+function displayNameFor(profileById, userId){
+  const p = profileById[userId];
+  if(!p) return '(탈퇴 회원)';
+  return p.real_name || p.email || userId;
+}
+
+function renderRankRows(containerEl, rows, formatMain, formatSub){
+  containerEl.innerHTML = rows.map((r, i) => `
+    <div class="product-row">
+      <div class="rank">${i + 1}</div>
+      <div class="pname">${escapeHtml(r.label)}</div>
+      <div class="pnums"><div class="main">${formatMain(r)}</div><div class="sub">${formatSub(r)}</div></div>
+    </div>
+  `).join('');
+}
+
+async function loadRankings(){
+  rankLoaded = true;
+  const [visitsRes, ordersRes, profilesRes] = await Promise.all([
+    sb.from('site_visits').select('user_id, ref_bucket, created_at'),
+    sb.from('settlement_orders').select('user_id, gross_sales'),
+    sb.from('profiles').select('id, email, real_name'),
+  ]);
+  // 익명(로그아웃) 방문은 회원 순위에 귀속시킬 수 없으니 제외한다 - 유입분석
+  // 탭의 기기/경로 비중 집계와 달리 여기는 "누가"가 핵심이라 반드시 필요.
+  const visits = (visitsRes.data || []).filter(v => v.user_id);
+  const orders = ordersRes.data || [];
+  const profileById = {};
+  (profilesRes.data || []).forEach(p => { profileById[p.id] = p; });
+
+  renderVisitRanking(visits, profileById);
+  renderRevenueRanking(orders, profileById);
+  renderRefRevenueRanking(visits, orders, profileById);
+}
+
+function renderVisitRanking(visits, profileById){
+  const counts = {};
+  visits.forEach(v => { counts[v.user_id] = (counts[v.user_id] || 0) + 1; });
+  const rows = Object.entries(counts)
+    .map(([userId, count]) => ({ label: displayNameFor(profileById, userId), count }))
+    .sort((a, b) => b.count - a.count).slice(0, 10);
+  document.getElementById('rankVisitsEmpty').style.display = rows.length ? 'none' : 'block';
+  renderRankRows(document.getElementById('rankVisitsList'), rows, r => `${r.count}회`, () => '방문');
+}
+
+function renderRevenueRanking(orders, profileById){
+  const sums = {};
+  orders.forEach(o => { sums[o.user_id] = (sums[o.user_id] || 0) + (o.gross_sales || 0); });
+  const rows = Object.entries(sums)
+    .map(([userId, gross]) => ({ label: displayNameFor(profileById, userId), gross }))
+    .sort((a, b) => b.gross - a.gross).slice(0, 10);
+  document.getElementById('rankRevenueEmpty').style.display = rows.length ? 'none' : 'block';
+  renderRankRows(document.getElementById('rankRevenueList'), rows, r => formatWon(r.gross), () => '매출');
+}
+
+function renderRefRevenueRanking(visits, orders, profileById){
+  // 첫 방문(가장 이른 created_at) 기준으로 유입경로를 귀속한다 - 마지막 방문이
+  // 아니라 "원래 어디서 왔나"를 보는 게 마케팅 관점에서 의미있는 지표다.
+  const firstTouch = {};
+  visits.forEach(v => {
+    const existing = firstTouch[v.user_id];
+    if(!existing || v.created_at < existing.created_at) firstTouch[v.user_id] = v;
+  });
+  const sums = {};
+  orders.forEach(o => { sums[o.user_id] = (sums[o.user_id] || 0) + (o.gross_sales || 0); });
+
+  const bucketToElId = { search: 'rankRefSearchList', site: 'rankRefSiteList', share: 'rankRefShareList' };
+  Object.keys(bucketToElId).forEach(bucket => {
+    const rows = Object.keys(firstTouch)
+      .filter(userId => firstTouch[userId].ref_bucket === bucket && sums[userId])
+      .map(userId => ({ label: displayNameFor(profileById, userId), gross: sums[userId] }))
+      .sort((a, b) => b.gross - a.gross).slice(0, 5);
+    const listEl = document.getElementById(bucketToElId[bucket]);
+    listEl.innerHTML = rows.length
+      ? rows.map((r, i) => `
+          <div class="product-row">
+            <div class="rank">${i + 1}</div>
+            <div class="pname">${escapeHtml(r.label)}</div>
+            <div class="pnums"><div class="main">${formatWon(r.gross)}</div></div>
+          </div>
+        `).join('')
+      : '<div class="empty-note">데이터가 없어요.</div>';
+  });
+}
+
+const REF_BUCKET_LABELS = { search: '검색유입', share: '공유유입', site: '사이트유입' };
+
+async function loadInflow(){
+  inflowLoaded = true;
+  const { data } = await sb.from('site_visits').select('device_type, ref_bucket');
+  const visits = data || [];
+  renderDeviceBreakdown(visits);
+  renderRefBreakdown(visits);
+}
+
+function renderDeviceBreakdown(visits){
+  const total = visits.length;
+  const counts = { pc: 0, mobile: 0 };
+  visits.forEach(v => { counts[v.device_type] = (counts[v.device_type] || 0) + 1; });
+  const labels = { pc: 'PC', mobile: '모바일' };
+  document.getElementById('deviceBreakdown').innerHTML = Object.keys(labels).map(key => {
+    const count = counts[key] || 0;
+    const pct = total ? ((count / total) * 100).toFixed(1) : '0.0';
+    return `<div class="platform-row"><div class="platform-row-title">${labels[key]}</div>
+      <div class="platform-row-nums"><span>방문수<b>${count}회</b></span><span>비중<b>${pct}%</b></span></div></div>`;
+  }).join('');
+}
+
+function renderRefBreakdown(visits){
+  const total = visits.length;
+  const counts = { search: 0, site: 0, share: 0 };
+  visits.forEach(v => { counts[v.ref_bucket] = (counts[v.ref_bucket] || 0) + 1; });
+  document.getElementById('refBreakdown').innerHTML = ['search', 'site', 'share'].map(key => {
+    const count = counts[key] || 0;
+    const pct = total ? ((count / total) * 100).toFixed(1) : '0.0';
+    return `<div class="platform-row"><div class="platform-row-title">${REF_BUCKET_LABELS[key]}</div>
+      <div class="platform-row-nums"><span>방문수<b>${count}회</b></span><span>비중<b>${pct}%</b></span></div></div>`;
+  }).join('');
 }
 
 function startOfTodayISO(){ const d = new Date(); d.setHours(0,0,0,0); return d.toISOString(); }
