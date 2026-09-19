@@ -16,10 +16,12 @@
   .filter-chip-row{ display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; flex-wrap:wrap; margin-bottom:14px; }
   .filter-chip{ flex-shrink:0; white-space:nowrap; padding:6px 10px; font-size:12.5px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:14px; cursor:pointer; }
   .filter-chip.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
-  .bar-row{ margin-bottom:12px; }
-  .bar-row-top{ display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:5px; }
-  .bar-track{ background:#F1EFE6; border-radius:3px; height:10px; overflow:hidden; }
-  .bar-fill{ background:var(--ink); height:100%; }
+  .chart-bars{ display:flex; align-items:flex-end; gap:3px; height:140px; padding-top:22px; border-bottom:1px solid var(--line); }
+  .chart-col{ flex:1; min-width:0; max-width:24px; height:100%; display:flex; align-items:flex-end; justify-content:center; position:relative; }
+  .chart-bar{ width:100%; background:var(--accent); border-radius:3px 3px 0 0; min-height:0; }
+  .chart-bar-label{ position:absolute; top:-19px; left:50%; transform:translateX(-50%); font-size:11px; font-weight:700; color:var(--ink); white-space:nowrap; }
+  .chart-axis{ position:relative; height:14px; margin-top:6px; }
+  .chart-axis-tick{ position:absolute; top:0; font-size:10px; color:var(--ink-soft); white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -103,7 +105,8 @@
           <button type="button" class="filter-chip active" data-days="30" onclick="setStatsPeriod(30)">30일</button>
           <button type="button" class="filter-chip" data-days="90" onclick="setStatsPeriod(90)">90일</button>
         </div>
-        <div id="statsChart"></div>
+        <div class="chart-bars" id="statsChart"></div>
+        <div class="chart-axis" id="statsAxis"></div>
         <div class="empty-note" id="statsEmptyNote" style="display:none;">데이터가 없어요.</div>
       </div>
     </div>
@@ -234,15 +237,43 @@ async function loadStatsTrend(){
   renderStatsChart(chartData);
 }
 
+function axisLabelStep(n){
+  if(n <= 10) return 1;
+  if(n <= 20) return 2;
+  return 5;
+}
+
 function renderStatsChart(chartData){
   const maxVal = Math.max(...chartData.map(d => d.count), 1);
-  document.getElementById('statsEmptyNote').style.display = chartData.some(d => d.count > 0) ? 'none' : 'block';
-  document.getElementById('statsChart').innerHTML = chartData.map(d => `
-    <div class="bar-row">
-      <div class="bar-row-top"><span>${d.label}</span><span>${d.count}</span></div>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, (d.count / maxVal) * 100)}%;"></div></div>
-    </div>
-  `).join('');
+  const hasData = chartData.some(d => d.count > 0);
+  document.getElementById('statsEmptyNote').style.display = hasData ? 'none' : 'block';
+
+  const lastIdx = chartData.length - 1;
+  document.getElementById('statsChart').innerHTML = chartData.map((d, i) => {
+    // 막대마다 값을 다 써놓으면 30개가 넘는 날짜에서 숫자가 뒤엉킨다.
+    // 가장 최근 막대에만 값을 직접 표시하고, 나머지는 마우스오버(title)로 확인한다.
+    const showLabel = i === lastIdx && d.count > 0;
+    return `
+      <div class="chart-col" title="${d.label}: ${d.count}건">
+        ${showLabel ? `<div class="chart-bar-label">${d.count}</div>` : ''}
+        <div class="chart-bar" style="height:${Math.max(0, (d.count / maxVal) * 100)}%;"></div>
+      </div>
+    `;
+  }).join('');
+
+  const step = axisLabelStep(chartData.length);
+  document.getElementById('statsAxis').innerHTML = chartData.map((d, i) => {
+    if(i % step !== 0 && i !== lastIdx) return '';
+    // 폭이 좁은 슬롯 안에 글자를 가두면 "08.21" 같은 라벨이 잘려 보인다
+    // (marks-and-anatomy: 라벨은 잘라내지 말고 공간을 직접 계산해서 배치한다).
+    // 양 끝 라벨은 카드 밖으로 넘치지 않게 가장자리에 붙이고, 중간은 막대
+    // 중심에 맞춰 퍼센트로 배치한다.
+    let posStyle;
+    if(i === 0) posStyle = 'left:0;';
+    else if(i === lastIdx) posStyle = 'right:0;';
+    else posStyle = `left:${((i + 0.5) / chartData.length) * 100}%; transform:translateX(-50%);`;
+    return `<div class="chart-axis-tick" style="${posStyle}">${escapeHtml(d.label)}</div>`;
+  }).join('');
 }
 
 function setStatsMetric(metric){
