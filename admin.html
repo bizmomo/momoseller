@@ -9,6 +9,18 @@
 <link href="shared.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="auth.js"></script>
+<style>
+  .tab-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .tab-btn{ flex:1; text-align:center; padding:9px 4px; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:3px; cursor:pointer; }
+  .tab-btn.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
+  .filter-chip-row{ display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; flex-wrap:wrap; margin-bottom:14px; }
+  .filter-chip{ flex-shrink:0; white-space:nowrap; padding:6px 10px; font-size:12.5px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:14px; cursor:pointer; }
+  .filter-chip.active{ background:var(--ink); color:#FBF9F2; border-color:var(--ink); font-weight:500; }
+  .bar-row{ margin-bottom:12px; }
+  .bar-row-top{ display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:5px; }
+  .bar-track{ background:#F1EFE6; border-radius:3px; height:10px; overflow:hidden; }
+  .bar-fill{ background:var(--ink); height:100%; }
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -51,6 +63,55 @@
     <div id="chargeRequestsList"><div class="empty-note">불러오는 중...</div></div>
   </div>
 
+  <div id="dashboardSection" style="display:none;">
+    <div class="card">
+      <h2>회원·통계 대시보드</h2>
+      <div class="tab-row dash-tab-row">
+        <button class="tab-btn active" data-tab="members" onclick="setDashTab('members')">회원현황</button>
+        <button class="tab-btn" data-tab="stats" onclick="setDashTab('stats')">통계</button>
+        <button class="tab-btn" data-tab="rank" onclick="setDashTab('rank')">순위</button>
+        <button class="tab-btn" data-tab="inflow" onclick="setDashTab('inflow')">유입분석</button>
+      </div>
+    </div>
+
+    <div id="membersTab">
+      <div class="card">
+        <div class="stat-grid">
+          <div class="stat-box"><div class="stat-label">총 회원 수</div><div class="stat-value" id="statTotalMembers">-</div></div>
+          <div class="stat-box"><div class="stat-label">오늘 신규가입</div><div class="stat-value" id="statTodaySignups">-</div></div>
+          <div class="stat-box"><div class="stat-label">이번주 신규가입</div><div class="stat-value" id="statWeekSignups">-</div></div>
+          <div class="stat-box"><div class="stat-label">이번달 신규가입</div><div class="stat-value" id="statMonthSignups">-</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>회원 목록</h2>
+        <div id="memberList"><div class="empty-note">불러오는 중...</div></div>
+        <div class="hint" style="text-align:center;">최근 가입한 100명까지 표시돼요.</div>
+      </div>
+    </div>
+
+    <div id="statsTab" style="display:none;">
+      <div class="card">
+        <div class="filter-chip-row" id="statsMetricChipRow">
+          <button type="button" class="filter-chip active" data-metric="signups" onclick="setStatsMetric('signups')">신규가입</button>
+          <button type="button" class="filter-chip" data-metric="visits" onclick="setStatsMetric('visits')">방문</button>
+          <button type="button" class="filter-chip" data-metric="ai" onclick="setStatsMetric('ai')">AI사용</button>
+          <button type="button" class="filter-chip" data-metric="settlement" onclick="setStatsMetric('settlement')">정산사용</button>
+        </div>
+        <div class="filter-chip-row" id="statsPeriodChipRow">
+          <button type="button" class="filter-chip" data-days="7" onclick="setStatsPeriod(7)">7일</button>
+          <button type="button" class="filter-chip active" data-days="30" onclick="setStatsPeriod(30)">30일</button>
+          <button type="button" class="filter-chip" data-days="90" onclick="setStatsPeriod(90)">90일</button>
+        </div>
+        <div id="statsChart"></div>
+        <div class="empty-note" id="statsEmptyNote" style="display:none;">데이터가 없어요.</div>
+      </div>
+    </div>
+
+    <div id="rankTab" style="display:none;"><div class="card"><span class="soon-badge">곧 추가돼요</span></div></div>
+    <div id="inflowTab" style="display:none;"><div class="card"><span class="soon-badge">곧 추가돼요</span></div></div>
+  </div>
+
 </div>
 
 <script>
@@ -69,7 +130,130 @@ async function checkAdminAccess(){
   }
   document.getElementById('adminCard').style.display = 'block';
   document.getElementById('chargeRequestsCard').style.display = 'block';
+  document.getElementById('dashboardSection').style.display = 'block';
   loadChargeRequests();
+  loadMemberStats();
+  loadMembers();
+}
+
+let membersLoaded = false, statsLoaded = false;
+let statsMetric = 'signups', statsPeriodDays = 30;
+
+function formatDateISO(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function setDashTab(tab){
+  ['members', 'stats', 'rank', 'inflow'].forEach(t => {
+    document.getElementById(t + 'Tab').style.display = t === tab ? 'block' : 'none';
+  });
+  document.querySelectorAll('.dash-tab-row .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  if(tab === 'stats' && !statsLoaded) loadStatsTrend();
+}
+
+function startOfTodayISO(){ const d = new Date(); d.setHours(0,0,0,0); return d.toISOString(); }
+function startOfWeekISO(){ const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - d.getDay()); return d.toISOString(); }
+function startOfMonthISO(){ const d = new Date(); d.setHours(0,0,0,0); d.setDate(1); return d.toISOString(); }
+
+async function loadMemberStats(){
+  const [{ count: total }, { count: today }, { count: week }, { count: month }] = await Promise.all([
+    sb.from('profiles').select('id', { count: 'exact', head: true }),
+    sb.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', startOfTodayISO()),
+    sb.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', startOfWeekISO()),
+    sb.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', startOfMonthISO()),
+  ]);
+  document.getElementById('statTotalMembers').textContent = total || 0;
+  document.getElementById('statTodaySignups').textContent = today || 0;
+  document.getElementById('statWeekSignups').textContent = week || 0;
+  document.getElementById('statMonthSignups').textContent = month || 0;
+}
+
+async function loadMembers(){
+  membersLoaded = true;
+  const listEl = document.getElementById('memberList');
+  const { data, error } = await sb.from('profiles')
+    .select('id, email, real_name, created_at')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if(error){
+    listEl.innerHTML = `<div class="empty-note">불러오기 실패: ${escapeHtml(error.message)}</div>`;
+    return;
+  }
+  if(!data || data.length === 0){
+    listEl.innerHTML = '<div class="empty-note">아직 회원이 없어요.</div>';
+    return;
+  }
+  listEl.innerHTML = data.map(p => `
+    <div class="history-item">
+      <div class="hi-top">
+        <span>${escapeHtml(p.real_name || '(이름 없음)')}</span>
+        <span class="hi-date">${escapeHtml((p.created_at || '').slice(0, 10).replace(/-/g, '.'))}</span>
+      </div>
+      <div class="hi-input">${escapeHtml(p.email || '')}</div>
+    </div>
+  `).join('');
+}
+
+const STATS_METRIC_CONFIG = {
+  signups: { table: 'profiles', col: 'created_at' },
+  visits: { table: 'site_visits', col: 'created_at' },
+  ai: { table: 'product_prompts', col: 'created_at' },
+  settlement: { table: 'settlement_reports', col: 'created_at' },
+};
+const DAILY_BUCKET_MAX_DAYS = 31;
+
+async function loadStatsTrend(){
+  statsLoaded = true;
+  const cfg = STATS_METRIC_CONFIG[statsMetric];
+  const end = new Date(); end.setHours(0,0,0,0);
+  const start = new Date(end.getTime() - (statsPeriodDays - 1) * 86400000);
+
+  const { data } = await sb.from(cfg.table).select(cfg.col).gte(cfg.col, start.toISOString());
+  const counts = {};
+  (data || []).forEach(r => {
+    const day = (r[cfg.col] || '').slice(0, 10);
+    counts[day] = (counts[day] || 0) + 1;
+  });
+
+  let chartData;
+  if(statsPeriodDays <= DAILY_BUCKET_MAX_DAYS){
+    const days = [];
+    const d = new Date(start);
+    while(d <= end){ days.push(formatDateISO(d)); d.setDate(d.getDate() + 1); }
+    chartData = days.map(day => ({ label: day.slice(5).replace('-', '.'), count: counts[day] || 0 }));
+  } else {
+    const weeks = {};
+    Object.entries(counts).forEach(([day, c]) => {
+      const weekStart = new Date(day + 'T00:00:00');
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      const key = formatDateISO(weekStart);
+      weeks[key] = (weeks[key] || 0) + c;
+    });
+    chartData = Object.keys(weeks).sort().map(key => ({ label: key.slice(5).replace('-', '.') + '~', count: weeks[key] }));
+  }
+  renderStatsChart(chartData);
+}
+
+function renderStatsChart(chartData){
+  const maxVal = Math.max(...chartData.map(d => d.count), 1);
+  document.getElementById('statsEmptyNote').style.display = chartData.some(d => d.count > 0) ? 'none' : 'block';
+  document.getElementById('statsChart').innerHTML = chartData.map(d => `
+    <div class="bar-row">
+      <div class="bar-row-top"><span>${d.label}</span><span>${d.count}</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, (d.count / maxVal) * 100)}%;"></div></div>
+    </div>
+  `).join('');
+}
+
+function setStatsMetric(metric){
+  statsMetric = metric;
+  document.querySelectorAll('#statsMetricChipRow .filter-chip').forEach(b => b.classList.toggle('active', b.dataset.metric === metric));
+  loadStatsTrend();
+}
+function setStatsPeriod(days){
+  statsPeriodDays = days;
+  document.querySelectorAll('#statsPeriodChipRow .filter-chip').forEach(b => b.classList.toggle('active', Number(b.dataset.days) === days));
+  loadStatsTrend();
 }
 
 async function loadChargeRequests(){
