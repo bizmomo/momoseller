@@ -14,6 +14,7 @@
   #appView{ display:none; }
   #authSignin{ display:block; }
   #authSignup{ display:none; }
+  #authFind{ display:none; }
   .ai-result-textarea{ min-height: 300px; }
 </style>
 </head>
@@ -48,6 +49,7 @@
         <button class="primary" onclick="signIn()">로그인</button>
         <div class="status" id="siStatus"></div>
         <div class="switch-link" onclick="showSignup()">계정이 없으신가요? 회원가입</div>
+        <div class="switch-link" onclick="showFind()">아이디·비밀번호를 잊으셨나요?</div>
       </div>
 
       <div id="authSignup">
@@ -60,9 +62,36 @@
           <label for="suPassword">비밀번호 (6자 이상)</label>
           <input type="password" id="suPassword" placeholder="비밀번호">
         </div>
+        <div class="field-block">
+          <label for="suRealName">이름</label>
+          <input type="text" id="suRealName" placeholder="홍길동">
+        </div>
+        <div class="field-block">
+          <label for="suPhone">휴대폰 번호</label>
+          <input type="tel" id="suPhone" placeholder="01012345678">
+          <div class="hint" style="margin-top:4px;">아이디·비밀번호를 잊었을 때 본인 확인에 사용돼요.</div>
+        </div>
         <button class="primary" onclick="signUp()">회원가입</button>
         <div class="status" id="suStatus"></div>
         <div class="switch-link" onclick="showSignin()">이미 계정이 있으신가요? 로그인</div>
+        <div class="switch-link" onclick="showFind()">아이디·비밀번호를 잊으셨나요?</div>
+      </div>
+
+      <div id="authFind">
+        <h2>계정 찾기</h2>
+        <p class="hint" style="margin-top:0;">가입할 때 등록한 휴대폰 번호와 이름을 입력해주세요.</p>
+        <div class="field-block">
+          <label for="findPhone">휴대폰 번호</label>
+          <input type="tel" id="findPhone" placeholder="01012345678">
+        </div>
+        <div class="field-block">
+          <label for="findName">이름</label>
+          <input type="text" id="findName" placeholder="홍길동">
+        </div>
+        <button class="primary" onclick="findId()">아이디(이메일) 찾기</button>
+        <button class="secondary" onclick="findPassword()">비밀번호 재설정 메일 받기</button>
+        <div class="status" id="findStatus"></div>
+        <div class="switch-link" onclick="showSignin()">로그인으로 돌아가기</div>
       </div>
     </div>
   </div>
@@ -207,9 +236,26 @@ init();
 
 function onLoggedIn(user){
   currentUser = user;
+  backfillProfileFromSignupMetadata(user);
   document.getElementById('authView').style.display = 'none';
   document.getElementById('appView').style.display = 'block';
   checkAiAccess().then(loadDraft);
+}
+
+async function backfillProfileFromSignupMetadata(user){
+  const meta = user.user_metadata || {};
+  if(!meta.real_name || !meta.phone_number) return;
+
+  const { data: profile } = await sb.from('profiles')
+    .select('real_name, phone_number')
+    .eq('id', user.id)
+    .single();
+
+  if(!profile || profile.real_name || profile.phone_number) return;
+
+  await sb.from('profiles')
+    .update({ real_name: meta.real_name, phone_number: meta.phone_number })
+    .eq('id', user.id);
 }
 
 const AI_FREE_LIMIT = 3;
@@ -328,27 +374,39 @@ function onLoggedOut(){
   document.getElementById('appView').style.display = 'none';
 }
 
-function showSignup(){
-  document.getElementById('authSignin').style.display = 'none';
-  document.getElementById('authSignup').style.display = 'block';
+function showAuthView(name){
+  document.getElementById('authSignin').style.display = name === 'signin' ? 'block' : 'none';
+  document.getElementById('authSignup').style.display = name === 'signup' ? 'block' : 'none';
+  document.getElementById('authFind').style.display = name === 'find' ? 'block' : 'none';
 }
-function showSignin(){
-  document.getElementById('authSignup').style.display = 'none';
-  document.getElementById('authSignin').style.display = 'block';
+function showSignup(){ showAuthView('signup'); }
+function showSignin(){ showAuthView('signin'); }
+function showFind(){
+  document.getElementById('findStatus').textContent = '';
+  showAuthView('find');
+}
+
+function normalizePhone(v){
+  return (v || '').replace(/\D/g, '');
 }
 
 async function signUp(){
   const email = document.getElementById('suEmail').value.trim();
   const password = document.getElementById('suPassword').value;
+  const realName = document.getElementById('suRealName').value.trim();
+  const phone = normalizePhone(document.getElementById('suPhone').value);
   const statusEl = document.getElementById('suStatus');
-  if(!email || !password){
-    statusEl.textContent = '이메일과 비밀번호를 입력해주세요.';
+  if(!email || !password || !realName || !phone){
+    statusEl.textContent = '이메일, 비밀번호, 이름, 휴대폰 번호를 모두 입력해주세요.';
     statusEl.className = 'status err';
     return;
   }
   statusEl.textContent = '가입 중...';
   statusEl.className = 'status';
-  const { data, error } = await sb.auth.signUp({ email, password });
+  const { data, error } = await sb.auth.signUp({
+    email, password,
+    options: { data: { real_name: realName, phone_number: phone } }
+  });
   if(error){
     statusEl.textContent = error.message;
     statusEl.className = 'status err';
@@ -361,6 +419,70 @@ async function signUp(){
     statusEl.textContent = '가입 완료! 이메일함에서 인증 링크를 확인해주세요.';
     statusEl.className = 'status ok';
   }
+}
+
+const FIND_ACCOUNT_GENERIC_FAIL = '입력하신 정보와 일치하는 계정을 찾을 수 없어요.';
+
+async function findId(){
+  const phone = normalizePhone(document.getElementById('findPhone').value);
+  const name = document.getElementById('findName').value.trim();
+  const statusEl = document.getElementById('findStatus');
+
+  if(!phone || !name){
+    statusEl.textContent = '휴대폰 번호와 이름을 모두 입력해주세요.';
+    statusEl.className = 'status err';
+    return;
+  }
+  statusEl.textContent = '조회 중...';
+  statusEl.className = 'status';
+
+  const { data, error } = await sb.rpc('find_masked_email_by_phone_name', {
+    p_phone: phone, p_real_name: name,
+  });
+
+  if(error || !data){
+    statusEl.textContent = FIND_ACCOUNT_GENERIC_FAIL;
+    statusEl.className = 'status err';
+    return;
+  }
+  statusEl.textContent = `가입하신 이메일: ${data}`;
+  statusEl.className = 'status ok';
+}
+
+async function findPassword(){
+  const phone = normalizePhone(document.getElementById('findPhone').value);
+  const name = document.getElementById('findName').value.trim();
+  const statusEl = document.getElementById('findStatus');
+
+  if(!phone || !name){
+    statusEl.textContent = '휴대폰 번호와 이름을 모두 입력해주세요.';
+    statusEl.className = 'status err';
+    return;
+  }
+  statusEl.textContent = '조회 중...';
+  statusEl.className = 'status';
+
+  const { data: realEmail, error } = await sb.rpc('find_email_for_password_reset', {
+    p_phone: phone, p_real_name: name,
+  });
+
+  if(error || !realEmail){
+    statusEl.textContent = FIND_ACCOUNT_GENERIC_FAIL;
+    statusEl.className = 'status err';
+    return;
+  }
+
+  const { error: resetError } = await sb.auth.resetPasswordForEmail(realEmail, {
+    redirectTo: window.location.origin + '/account.html'
+  });
+
+  if(resetError){
+    statusEl.textContent = '재설정 메일 발송에 실패했어요. 잠시 후 다시 시도해주세요.';
+    statusEl.className = 'status err';
+    return;
+  }
+  statusEl.textContent = '가입하신 이메일로 재설정 링크를 보냈어요.';
+  statusEl.className = 'status ok';
 }
 
 async function signIn(){
